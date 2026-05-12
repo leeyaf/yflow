@@ -227,6 +227,10 @@ func fMyFunction2(step *yflow.Step) any {
 yflow.RegistFunctionWithStep("MyFunction2", fMyFunction2)
 ````
 
+## Memory Model
+
+![memory-model](./memory-model.png)
+
 ## Contribution
 
 Steps and Functions that are generally useful, fundamental, and not biased towards specific projects are registered by default. Those with a specific bias should be placed in ``/more/``, and the source code can be copied for use in your projects.

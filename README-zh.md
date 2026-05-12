@@ -226,6 +226,10 @@ func fMyFunction2(step *yflow.Step) any {
 yflow.RegistFunctionWithStep("MyFunction2", fMyFunction2)
 ````
 
+## 内存模型
+
+![内存模型](./memory-model.png)
+
 ## 贡献
 
 通用性较好的、基础的、无具体项目偏向的 Step 和 Function 默认注册，有偏向的请放在 ``/more/`` 里，可以拷贝源代码到项目中使用。

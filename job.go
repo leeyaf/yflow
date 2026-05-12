@@ -106,9 +106,8 @@ func newStep(job *Job, workflow *Workflow, difinition *StepDefinition, register 
 }
 
 func (s *Step) Apply(value string, expression string) string {
-	ctx := context.NewDataContext()
-	ctx.Add("value", value)
-	return s.job.Gengine(ctx, s, expression)
+	s.job.gengineCtx.Add("value", value)
+	return s.job.Gengine(s, expression)
 }
 
 func (s *Step) GetDefinition() *StepDefinition {
@@ -145,7 +144,7 @@ func (w *Workflow) execute() {
 			re := regexp.MustCompile(`\(\((.*?)\)\)`)
 			matches := re.FindAllStringSubmatch(row, -1)
 			for _, match := range matches {
-				result := w.job.Gengine(context.NewDataContext(), step, match[1])
+				result := w.job.Gengine(step, match[1])
 				data = strings.Replace(data, match[0], result, 1)
 			}
 			noExps = append(noExps, data)
@@ -169,6 +168,7 @@ type Job struct {
 	input      map[string]string
 	env        map[string]string
 	workflows  []*Workflow
+	gengineCtx *context.DataContext
 }
 
 /*
@@ -184,6 +184,7 @@ func NewJob(yamlString string, input []string) *Job {
 		definition: definition,
 		workflows:  make([]*Workflow, 0, len(definition.Workflows)),
 		env:        envMap,
+		gengineCtx: context.NewDataContext(),
 	}
 
 	inputMap := make(map[string]string)
@@ -194,6 +195,9 @@ func NewJob(yamlString string, input []string) *Job {
 		}
 	}
 	job.input = inputMap
+
+	job.gengineCtx.Add("input", inputMap)
+	job.gengineCtx.Add("env", envMap)
 
 	for _, workflowDef := range definition.Workflows {
 		workflow := &Workflow{
@@ -211,6 +215,7 @@ func NewJob(yamlString string, input []string) *Job {
 		}
 		job.workflows = append(job.workflows, workflow)
 	}
+
 	return job
 }
 
@@ -279,18 +284,16 @@ func (j *Job) GetMatrix(stepDef *StepDefinition, exp string) *Matrix {
 	}
 }
 
-func (j *Job) Gengine(ctx *context.DataContext, step *Step, expression string) string {
-	ctx.Add("input", j.input)
-	ctx.Add("env", j.env)
+func (j *Job) Gengine(step *Step, expression string) string {
 	for name, f := range functions {
-		ctx.Add(name, f(step))
+		j.gengineCtx.Add(name, f(step))
 	}
 
 	script := "rule \"job\"\n" +
 		"begin\n" +
 		"return " + expression + "\n" +
 		"end"
-	rb := builder.NewRuleBuilder(ctx)
+	rb := builder.NewRuleBuilder(j.gengineCtx)
 	if err := rb.BuildRuleFromString(script); err != nil {
 		panic(err)
 	}
