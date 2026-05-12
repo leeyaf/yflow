@@ -24,9 +24,10 @@ func init() {
 	)
 }
 
+// 执行 MySQL 查询
 func sMysqlExecute(s *yflow.Step, in *yflow.Matrix, out *yflow.Matrix) {
-	uri := in.Get(0, 0)
-	sql := in.Get(1, 0)
+	uri := in.Get(0, 0) // 连接字符串
+	sql := in.Get(1, 0) // SQL
 
 	slog.Info("MysqlExecute", "sql", sql)
 

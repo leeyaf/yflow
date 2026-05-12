@@ -6,50 +6,29 @@ import (
 )
 
 func init() {
-	RegistStep(
-		"Test",
-		[]string{"Param1", "Param2", ".."},
-		sTest,
-	)
-	RegistStep(
-		"MatrixNew",
-		[]string{"Sep", "Row1", "Row2", ".."},
-		sMatrixNew,
-	)
-	RegistStep(
-		"MatrixTranspose",
-		[]string{"SourceMatrixName"},
-		sMatrixTranspose,
-	)
-	RegistStep(
-		"MatrixInsert",
-		[]string{"SourceMatrixName", "RowOrCol", "Index", "Value0", "Value1", ".."},
-		sMatrixInsert,
-	)
-	RegistStep(
-		"MatrixSelect",
-		[]string{"SourceMatrixName", "RowOrCol", "Index0", "Index1", ".."},
-		sMatrixSelect,
-	)
-	RegistStep(
-		"MatrixVLookUp",
-		[]string{"SourceMatrixName", "SourceCol", "LoopUpMatrixName", "LookUpCol", "ReturnCol"},
-		sMatrixVLookUp,
-	)
-	RegistStep(
-		"MatrixApply",
-		[]string{"SourceMatrixName", "RowOrCol", "Index", "Expression"},
-		sMatrixApply,
-	)
+	RegistStep("Test", sTest)
+
+	RegistStep("MatrixNew", sMatrixNew)
+	RegistStep("MatrixEmpty", sMatrixEmpty)
+	RegistStep("MatrixTranspose", sMatrixTranspose)
+	RegistStep("MatrixSort", sMatrixSort)
+	RegistStep("MatrixInsert", sMatrixInsert)
+	RegistStep("MatrixSelect", sMatrixSelect)
+	RegistStep("MatrixVLookUp", sMatrixVLookUp)
+	RegistStep("MatrixApply", sMatrixApply)
 }
 
+// 输出等于输入
+//
+// 可以用来测试表达式
 func sTest(s *Step, in *Matrix, out *Matrix) {
-	out.SetColumns(in.GetColumns())
+	in.CopyTo(out)
 }
 
+// 从 YAML 定义创建矩阵
 func sMatrixNew(s *Step, in *Matrix, out *Matrix) {
-	sep := in.Get(0, 0)
-	rows := in.GetCol(0)[1:]
+	sep := in.Get(0, 0)      // 行内元素的字符串分隔符
+	rows := in.GetCol(0)[1:] // 多行数据
 
 	for _, row := range rows {
 		cells := strings.Split(row, sep)
@@ -61,42 +40,56 @@ func sMatrixNew(s *Step, in *Matrix, out *Matrix) {
 	}
 }
 
-func sMatrixTranspose(s *Step, in *Matrix, out *Matrix) {
-	matrixName := in.Get(0, 0)
+// 创建一个空矩阵，并使用默认值填充
+func sMatrixEmpty(s *Step, in *Matrix, out *Matrix) {
+	rows := in.GetInt(0, 0)      // 行数
+	cols := in.GetInt(1, 0)      // 列数
+	defaultValue := in.Get(2, 0) // 默认值
 
-	sourceMatrix := s.GetMatrix(matrixName).Clone()
-	out.SetColumns(sourceMatrix.GetColumns())
+	out.Resize(rows, cols, defaultValue)
+}
+
+// 矩阵转置，行变成列，列变成行
+func sMatrixTranspose(s *Step, in *Matrix, out *Matrix) {
+	matrixName := in.Get(0, 0) // 要操作的矩阵名
+
+	s.GetMatrix(matrixName).CopyTo(out)
 	out.Transpose()
 }
 
+// 根据矩阵的某列排序，该列的数据转成 float64 后排序
+func sMatrixSort(s *Step, in *Matrix, out *Matrix) {
+	matrixName := in.Get(0, 0) // 要操作的矩阵名
+	col := in.GetInt(1, 0)     // 列下标
+	ascOrDesc := in.Get(2, 0)  // 升序或降序
+
+	s.GetMatrix(matrixName).CopyTo(out)
+	out.Sort(col, ascOrDesc == "asc")
+}
+
+// 插入一行或一列到矩阵
 func sMatrixInsert(s *Step, in *Matrix, out *Matrix) {
-	col0 := in.GetCol(0)
-	matrixName := col0[0]
-	rowOrCol := col0[1]
-	index := col0[2]
-	values := col0[3:]
+	matrixName := in.Get(0, 0) // 要操作的矩阵名
+	rowOrCol := in.Get(1, 0)   // 方向
+	index := in.GetInt(2, 0)   // 下标
+	values := in.GetCol(0)[3:] // 数据
 
-	intIndex, err := strconv.ParseInt(index, 10, 64)
-	if err != nil {
-		panic(err)
-	}
+	s.GetMatrix(matrixName).CopyTo(out)
 
-	sourceMatrix := s.GetMatrix(matrixName).Clone()
-	out.SetColumns(sourceMatrix.GetColumns())
 	if rowOrCol == "row" {
-		out.InsertRow(int(intIndex), values)
+		out.InsertRow(index, values)
 	} else if rowOrCol == "col" {
-		out.InsertCol(int(intIndex), values)
+		out.InsertCol(index, values)
 	} else {
 		panic("wrong row or col")
 	}
 }
 
+// 筛选矩阵的多行或多列
 func sMatrixSelect(s *Step, in *Matrix, out *Matrix) {
-	col0 := in.GetCol(0)
-	sourceMatrixName := col0[0]
-	rowOrCol := col0[1]
-	indexs := col0[2:]
+	sourceMatrixName := in.Get(0, 0) // 原矩阵名
+	rowOrCol := in.Get(1, 0)         // 方向
+	indexs := in.GetCol(0)[2:]       // 下标数组
 
 	sourceMatrix := s.GetMatrix(sourceMatrixName)
 	for _, index := range indexs {
@@ -116,84 +109,71 @@ func sMatrixSelect(s *Step, in *Matrix, out *Matrix) {
 	}
 }
 
+// 垂直查找并替换矩阵的一列
 func sMatrixVLookUp(s *Step, in *Matrix, out *Matrix) {
-	sourceMatrix := in.Get(0, 0)
-	sourceCol := in.Get(1, 0)
-	lookUpMatrix := in.Get(2, 0)
-	lookUpCol := in.Get(3, 0)
-	lookUpReturnCol := in.Get(4, 0)
-
-	sCol, err := strconv.ParseInt(sourceCol, 10, 64)
-	if err != nil {
-		panic(err)
-	}
-
-	lCol, err := strconv.ParseInt(lookUpCol, 10, 64)
-	if err != nil {
-		panic(err)
-	}
-
-	rCol, err := strconv.ParseInt(lookUpReturnCol, 10, 64)
-	if err != nil {
-		panic(err)
-	}
+	sourceMatrix := in.Get(0, 0)       // 原矩阵名
+	sourceCol := in.GetInt(1, 0)       // 原矩阵的列下标
+	lookUpMatrix := in.Get(2, 0)       // 目标矩阵名
+	lookUpCol := in.GetInt(3, 0)       // 目标矩阵查找列的下标
+	lookUpReturnCol := in.GetInt(4, 0) // 目标矩阵返回列的下标
 
 	sMat := s.GetMatrix(sourceMatrix)
 	lMat := s.GetMatrix(lookUpMatrix)
 
-	sColumn := sMat.GetCol(int(sCol))
-	lColumn := lMat.GetCol(int(lCol))
-	rColumn := lMat.GetCol(int(rCol))
+	sColumn := sMat.GetCol(sourceCol)
+	lColumn := lMat.GetCol(lookUpCol)
+	rColumn := lMat.GetCol(lookUpReturnCol)
+
+	find := func(source string, lookUpCol []string, returnCol []string) string {
+		for i := range lookUpCol {
+			l := lookUpCol[i]
+
+			if l == source {
+				return returnCol[i]
+			}
+		}
+		return source
+	}
 
 	newColunm := make([]string, 0, len(sColumn))
 	for _, origin := range sColumn {
-		replace := sMatrixVLookUpLook(origin, lColumn, rColumn)
+		replace := find(origin, lColumn, rColumn)
 		newColunm = append(newColunm, replace)
 	}
 
-	out.SetColumns(sMat.Clone().GetColumns())
-	out.SetCol(int(sCol), newColunm)
+	sMat.CopyTo(out)
+
+	out.SetCol(sourceCol, newColunm)
 }
 
-func sMatrixVLookUpLook(source string, lookUpCol []string, returnCol []string) string {
-	for i := range lookUpCol {
-		l := lookUpCol[i]
-
-		if l == source {
-			return returnCol[i]
-		}
-	}
-	return source
-}
-
+// 对矩阵的行或列应用表达式
+//
+// 注意：表达式不要使用 (( )) 包裹
+// 包裹会按照 step.in 的逻辑统一处理
+//
+// value 代表元素的值
 func sMatrixApply(s *Step, in *Matrix, out *Matrix) {
-	sourceMatrixName := in.Get(0, 0)
-	rowOrCol := in.Get(1, 0)
-	index := in.Get(2, 0)
-	expression := in.Get(3, 0)
+	sourceMatrixName := in.Get(0, 0) // 要操作的矩阵名
+	rowOrCol := in.Get(1, 0)         // 方向
+	index := in.GetInt(2, 0)         // 下标
+	expression := in.Get(3, 0)       // 表达式
 
-	sMat := s.GetMatrix(sourceMatrixName)
-	intIndex, err := strconv.ParseInt(index, 10, 64)
-	if err != nil {
-		panic(err)
-	}
-
-	out.SetColumns(sMat.Clone().GetColumns())
+	s.GetMatrix(sourceMatrixName).CopyTo(out)
 
 	if rowOrCol == "row" {
 		newSlices := make([]string, 0)
-		for _, value := range out.GetRow(int(intIndex)) {
-			result := s.Apply(value, expression)
+		for _, value := range out.GetRow(index) {
+			result := s.Apply(value, "value", expression)
 			newSlices = append(newSlices, result)
 		}
-		out.SetRow(int(intIndex), newSlices)
+		out.SetRow(index, newSlices)
 	} else if rowOrCol == "col" {
 		newSlices := make([]string, 0)
-		for _, value := range out.GetCol(int(intIndex)) {
-			result := s.Apply(value, expression)
+		for _, value := range out.GetCol(index) {
+			result := s.Apply(value, "value", expression)
 			newSlices = append(newSlices, result)
 		}
-		out.SetCol(int(intIndex), newSlices)
+		out.SetCol(index, newSlices)
 	} else {
 		panic("wrong row or col")
 	}

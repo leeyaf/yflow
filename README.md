@@ -168,7 +168,7 @@ workflows:
 output: result.out # Points to a Step's output
 ````
 
-Available Steps are [registed-step.md](./registed-step.md).
+The Steps registered by default are in [registed_step.go](./registed_step.go).
 
 More Step implementations:
 
@@ -186,7 +186,7 @@ Expressions can be used in all ``step.in`` fields.
 
 Refer to [bilibili/gengine](https://github.com/bilibili/gengine/wiki/语法) for expression details.
 
-Available Functions are [registed-function.md](./registed-function.md).
+The Functions registered by default are in [registed_function.go](./registed_function.go).
 
 ## Development Guide
 
@@ -197,11 +197,7 @@ func sMyStep(s *yflow.Step, in *yflow.Matrix, out *yflow.Matrix) {
     // Write processing results to 'out'
 }
 
-yflow.RegistStep(
-    "MyStep",
-    []string{"Param1", "Param2", ".."},
-    sMyStep,
-)
+yflow.RegistStep("MyStep", sMyStep)
 ````
 
 ### Adding a Function

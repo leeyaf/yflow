@@ -167,7 +167,7 @@ workflows:
 output: result.out # 指向 Step
 ````
 
-可用的 Step [在这里](./registed-step.md)
+已默认注册的 Step 在 [registed_step.go](./registed_step.go)
 
 更多的 Step 实现：
 
@@ -185,7 +185,7 @@ output: result.out # 指向 Step
 
 参考 [bilibili/gengine语法](https://github.com/bilibili/gengine/wiki/语法)
 
-可用的 Function [参考这里](./registed-function.md)
+已默认注册的 Function 在 [registed_function.go](./registed_function.go)
 
 ## 开发指南
 
@@ -196,11 +196,7 @@ func sMyStep(s *yflow.Step,in *yflow.Matrix, out *yflow.Matrix) {
     // 把处理结果写入到 out
 }
 
-yflow.RegistStep(
-    "MyStep",
-    []string{"Param1", "Param2", ".."},
-    sMyStep,
-)
+yflow.RegistStep("MyStep", sMyStep)
 ````
 
 ### 添加 Function

@@ -3,6 +3,8 @@ package yflow
 import (
 	"fmt"
 	"math/big"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -26,6 +28,10 @@ func (c *column) clone() *column {
 	}
 }
 
+func (c *column) copyTo(target *column) {
+	target.data = c.slice()
+}
+
 func (c *column) slice() []string {
 	newData := make([]string, len(c.data))
 	copy(newData, c.data)
@@ -36,17 +42,17 @@ func (c *column) append(data string) {
 	c.data = append(c.data, data)
 }
 
-func (c *column) resize(size int, defaultValue string) {
-	if size < 0 {
+func (c *column) resize(newSize int, defaultValue string) {
+	oldSize := len(c.data)
+
+	if newSize < 0 {
 		panic("negative size")
-	} else if len(c.data) < size {
-		// 扩大
-		for range size - len(c.data) {
+	} else if newSize > oldSize { // 扩大
+		for range newSize - oldSize {
 			c.data = append(c.data, defaultValue)
 		}
-	} else if len(c.data) > size {
-		// 剪裁
-		c.data = c.data[:size]
+	} else if newSize < oldSize { // 剪裁
+		c.data = c.data[:newSize]
 	} else {
 		return
 	}
@@ -122,10 +128,17 @@ func (c *column) set(row int, value string) {
 	c.data[row] = value
 }
 
+func (c *column) getData() []string {
+	return c.data
+}
+
 func (c *column) setData(data []string) {
 	c.data = data
 }
 
+// 基于列的二维矩阵
+//
+// 元素类型统一为 string
 type Matrix struct {
 	columns []*column
 }
@@ -140,27 +153,29 @@ func (m *Matrix) Shape() (rows, cols int) {
 	if len(m.columns) == 0 {
 		return
 	}
+
 	cols = len(m.columns)
-	rows = m.columns[0].len() // 确保所有的 col 长度一致
+	// 在对矩阵进行操作时，需要确保所有 column 的长度一致
+	rows = m.columns[0].len()
 	return
 }
 
 func (m *Matrix) Clone() *Matrix {
 	newColumns := make([]*column, 0, len(m.columns))
-	for _, col := range m.columns {
-		newColumns = append(newColumns, col.clone())
+	for _, column := range m.columns {
+		newColumns = append(newColumns, column.clone())
 	}
 	return &Matrix{
 		columns: newColumns,
 	}
 }
 
-func (m *Matrix) SetColumns(columns []*column) {
-	m.columns = columns
-}
-
-func (m *Matrix) GetColumns() []*column {
-	return m.columns
+func (m *Matrix) CopyTo(target *Matrix) {
+	newColumns := make([]*column, 0, len(m.columns))
+	for _, column := range m.columns {
+		newColumns = append(newColumns, column.clone())
+	}
+	target.columns = newColumns
 }
 
 func (m *Matrix) Resize(rows int, cols int, defaultValue string) {
@@ -168,21 +183,21 @@ func (m *Matrix) Resize(rows int, cols int, defaultValue string) {
 		panic("negative rows or cols")
 	}
 
-	_, oldCols := m.Shape()
-	if cols > oldCols {
-		// 扩大
-		for range cols - oldCols {
-			column := newColumn()
-			column.resize(cols, defaultValue)
-			m.columns = append(m.columns, column)
-		}
-	} else if cols < oldCols {
-		// 剪裁
-		m.columns = m.columns[:cols-1]
+	// 保证所有 column 的长度一致
+	oldCols := 0
+	for _, column := range m.columns {
+		column.resize(rows, defaultValue)
+		oldCols++
 	}
 
-	for _, col := range m.columns {
-		col.resize(rows, defaultValue)
+	if cols > oldCols { // 扩大
+		for range cols - oldCols {
+			column := newColumn()
+			column.resize(rows, defaultValue)
+			m.columns = append(m.columns, column)
+		}
+	} else if cols < oldCols { // 剪裁
+		m.columns = m.columns[:cols]
 	}
 }
 
@@ -233,6 +248,7 @@ func (m *Matrix) subRowString(b *strings.Builder, row int, colFrom, colTo int, b
 	}
 }
 
+// 转置
 func (m *Matrix) Transpose() {
 	rows, cols := m.Shape()
 
@@ -257,44 +273,100 @@ func (m *Matrix) Transpose() {
 	m.columns = newColumns
 }
 
+// 根据矩阵的某列排序，该列的数据转成 float64 后排序
+//
+// asc 为 true 时升序，false 降序
+func (m *Matrix) Sort(col int, asc bool) {
+	if col < 0 || col >= len(m.columns) {
+		panic("wrong col")
+	}
+
+	type dataWithRow struct {
+		oldRow int
+		data   float64
+	}
+
+	sortData := m.columns[col].slice()
+	dwrs := make([]*dataWithRow, 0, len(sortData))
+	for row, dataString := range sortData {
+		dataFloat64, err := strconv.ParseFloat(dataString, 64)
+		if err != nil {
+			panic("parse float64 fail")
+		}
+		dwrs = append(dwrs, &dataWithRow{
+			oldRow: row,
+			data:   dataFloat64,
+		})
+	}
+
+	sort.Slice(dwrs, func(i, j int) bool {
+		if asc {
+			return dwrs[i].data < dwrs[j].data
+		} else {
+			return dwrs[i].data > dwrs[j].data
+		}
+	})
+
+	oldRowToNewRow := make(map[int]int, len(dwrs))
+	for newRow, dwr := range dwrs {
+		oldRowToNewRow[dwr.oldRow] = newRow
+	}
+
+	newColumns := make([]*column, 0, len(m.columns))
+	for _, oldColumn := range m.columns {
+		newColumn := newColumn()
+		newColumn.resize(oldColumn.len(), "")
+		for oldRow, cell := range oldColumn.getData() {
+			newRow := oldRowToNewRow[oldRow]
+			newColumn.set(newRow, cell)
+		}
+		newColumns = append(newColumns, newColumn)
+	}
+
+	m.columns = newColumns
+}
+
+// 插入一行
 func (m *Matrix) InsertRow(row int, data []string) {
 	if row < 0 {
 		panic("negative row")
 	}
 
 	rows, cols := m.Shape()
-	if len(data) != cols {
-		panic("wrong shape")
-	}
 	m.Resize(rows+1, cols, "")
 
+	// 只移动插入行之后的行，每行的数据等于上一行的数据
 	for i := rows; i > row; i-- {
 		for _, column := range m.columns {
 			column.set(i, column.get(i-1))
 		}
 	}
+
+	// 插入该行
 	for i, column := range m.columns {
 		column.set(row, data[i])
 	}
 }
 
+// 插入一列
 func (m *Matrix) InsertCol(col int, data []string) {
 	if col < 0 {
 		panic("negative col")
 	}
 
 	rows, cols := m.Shape()
-	if len(data) != rows {
-		panic("wrong shape")
-	}
 	m.Resize(rows, cols+1, "")
 
+	// 只移动插入列之后的列，每列的数据等于前一列的数据
 	for i := cols; i > col; i-- {
 		m.columns[i] = m.columns[i-1]
 	}
+
+	// 插入该列
 	m.columns[col].setData(data)
 }
 
+// 设置某行的数据
 func (m *Matrix) SetRow(row int, data []string) {
 	if row < 0 {
 		panic("negative row")
@@ -308,6 +380,7 @@ func (m *Matrix) SetRow(row int, data []string) {
 	}
 }
 
+// 设置某列的数据
 func (m *Matrix) SetCol(col int, data []string) {
 	if col < 0 {
 		panic("negative row")
@@ -321,6 +394,7 @@ func (m *Matrix) SetCol(col int, data []string) {
 	}
 }
 
+// 在末尾添加一行
 func (m *Matrix) AppendRow(data []string) {
 	rows, cols := m.Shape()
 	m.Resize(rows, max(cols, len(data)), "")
@@ -330,6 +404,7 @@ func (m *Matrix) AppendRow(data []string) {
 	}
 }
 
+// 在末尾添加一列
 func (m *Matrix) AppendCol(data []string) {
 	rows, cols := m.Shape()
 	m.Resize(max(rows, len(data)), cols, "")
@@ -371,6 +446,23 @@ func (m *Matrix) Get(row int, col int) string {
 	}
 
 	return m.columns[col].get(row)
+}
+
+func (m *Matrix) GetInt(row int, col int) int {
+	return int(m.GetInt64(row, col))
+}
+
+func (m *Matrix) GetInt32(row int, col int) int32 {
+	return int32(m.GetInt64(row, col))
+}
+
+func (m *Matrix) GetInt64(row int, col int) int64 {
+	cell := m.Get(row, col)
+	i, err := strconv.ParseInt(cell, 10, 64)
+	if err != nil {
+		panic("parse int fail")
+	}
+	return i
 }
 
 func (m *Matrix) Set(row int, col int, value string) {

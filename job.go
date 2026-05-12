@@ -24,9 +24,8 @@ var (
 )
 
 type StepRegister struct {
-	Name   string
-	Params []string
-	f      func(step *Step, in *Matrix, out *Matrix)
+	Name string
+	f    func(step *Step, in *Matrix, out *Matrix)
 }
 
 func RegistFunction(key string, f any) {
@@ -65,12 +64,9 @@ func GetEnv(key string) string {
 	return envMap[key]
 }
 
-func RegistStep(name string, params []string, f func(step *Step, in *Matrix, out *Matrix)) {
+func RegistStep(name string, f func(step *Step, in *Matrix, out *Matrix)) {
 	if name == "" {
 		panic("no step name")
-	}
-	if params == nil {
-		panic("no params")
 	}
 	if f == nil {
 		panic("f is nil")
@@ -79,9 +75,8 @@ func RegistStep(name string, params []string, f func(step *Step, in *Matrix, out
 		panic("repeatname " + name)
 	}
 	steps[name] = &StepRegister{
-		Name:   name,
-		Params: params,
-		f:      f,
+		Name: name,
+		f:    f,
 	}
 }
 
@@ -105,8 +100,8 @@ func newStep(job *Job, workflow *Workflow, difinition *StepDefinition, register 
 	}
 }
 
-func (s *Step) Apply(value string, expression string) string {
-	s.job.gengineCtx.Add("value", value)
+func (s *Step) Apply(value string, valueName string, expression string) string {
+	s.job.gengineCtx.Add(valueName, value)
 	return s.job.Gengine(s, expression)
 }
 
@@ -131,6 +126,29 @@ func (s *Step) getOut() *Matrix {
 	}
 }
 
+func (s *Step) execute() {
+	noExps := make([]string, 0)
+	for _, row := range s.definition.In {
+		data := row
+		re := regexp.MustCompile(`\(\((.*?)\)\)`)
+		matches := re.FindAllStringSubmatch(row, -1)
+		for _, match := range matches {
+			result := s.job.Gengine(s, match[1])
+			data = strings.Replace(data, match[0], result, 1)
+		}
+		noExps = append(noExps, data)
+	}
+
+	in := NewMatrix()
+	in.SetCol(0, noExps)
+	s.in = in
+
+	out := NewMatrix()
+	s.out = out
+
+	s.register.f(s, in, out)
+}
+
 type Workflow struct {
 	job   *Job
 	steps []*Step
@@ -138,27 +156,7 @@ type Workflow struct {
 
 func (w *Workflow) execute() {
 	for _, step := range w.steps {
-		noExps := make([]string, 0)
-		for _, row := range step.definition.In {
-			data := row
-			re := regexp.MustCompile(`\(\((.*?)\)\)`)
-			matches := re.FindAllStringSubmatch(row, -1)
-			for _, match := range matches {
-				result := w.job.Gengine(step, match[1])
-				data = strings.Replace(data, match[0], result, 1)
-			}
-			noExps = append(noExps, data)
-		}
-
-		in := NewMatrix()
-		in.SetCol(0, noExps)
-		step.in = in
-
-		out := NewMatrix()
-		step.out = out
-
-		step.register.f(step, in, out)
-
+		step.execute()
 		close(step.done)
 	}
 }
