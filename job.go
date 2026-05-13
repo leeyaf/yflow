@@ -1,32 +1,44 @@
 package yflow
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/bilibili/gengine/builder"
-	"github.com/bilibili/gengine/context"
+	gcontext "github.com/bilibili/gengine/context"
 	"github.com/bilibili/gengine/engine"
 	"gopkg.in/yaml.v3"
 )
 
-const (
-	MaxWaitStepSeconds = 30
-)
+var envMap = make(map[string]string)
 
-var (
-	steps     = make(map[string]*StepRegister)
-	envMap    = make(map[string]string)
-	functions = make(map[string]func(step *Step) any)
-)
+func RegistEnv(key string, value string) error {
+	if key == "" {
+		return errors.New("empty key")
+	}
+	if value == "" {
+		return errors.New("empty value")
+	}
+	if _, exists := envMap[key]; exists {
+		slog.Warn("duplicate", "key", key)
+	}
 
-type StepRegister struct {
-	Name string
-	f    func(step *Step, in *Matrix, out *Matrix)
+	envMap[key] = value
+	return nil
 }
+
+func GetEnv(key string) string {
+	return envMap[key]
+}
+
+var functions = make(map[string]func(step *Step) any)
 
 func RegistFunction(key string, f any) {
 	RegistFunctionWithStep(key, func(s *Step) any {
@@ -34,131 +46,345 @@ func RegistFunction(key string, f any) {
 	})
 }
 
-func RegistFunctionWithStep(key string, f func(step *Step) any) {
+func RegistFunctionWithStep(key string, f func(step *Step) any) error {
 	if key == "" {
-		panic("empty key")
+		return errors.New("empty key")
 	}
 	if f == nil {
-		panic("no func")
+		return errors.New("f is nil")
 	}
 	if _, exists := functions[key]; exists {
-		panic("repeat key " + key)
+		slog.Warn("duplicate", "key", key)
 	}
+
 	functions[key] = f
+	return nil
 }
 
-func RegistEnv(key string, val string) {
-	if key == "" {
-		panic("empty key")
-	}
-	if val == "" {
-		panic("empty val")
-	}
-	if _, exists := envMap[key]; exists {
-		panic("repeat key " + key)
-	}
-	envMap[key] = val
+var steps = make(map[string]*StepRegister)
+
+type StepRegister struct {
+	Name string
+	f    func(step *Step, in *Matrix, out *Matrix)
 }
 
-func GetEnv(key string) string {
-	return envMap[key]
-}
-
-func RegistStep(name string, f func(step *Step, in *Matrix, out *Matrix)) {
+func RegistStep(name string, f func(step *Step, in *Matrix, out *Matrix)) error {
 	if name == "" {
-		panic("no step name")
+		return errors.New("empty name")
 	}
 	if f == nil {
-		panic("f is nil")
+		return errors.New("f is nil")
 	}
 	if _, exists := steps[name]; exists {
-		panic("repeatname " + name)
+		slog.Warn("duplicate", "name", name)
 	}
+
 	steps[name] = &StepRegister{
 		Name: name,
 		f:    f,
 	}
+	return nil
 }
 
+type StepError struct {
+	step    *Step
+	message any
+	stack   []byte
+}
+
+func (e *StepError) Error() string {
+	b := new(strings.Builder)
+	b.WriteString(fmt.Sprintf("%v [%v]", e.message, e.step.pathLog()))
+	b.WriteString(fmt.Sprintf("\n%v", string(e.stack)))
+	return b.String()
+}
+
+const StepMaxLifetime = 3 * time.Second
+
+type stepState uint8
+
+const (
+	stateDefault = stepState(0) + iota
+	statePass
+	stateFail
+	stateCancelOrTimeout
+)
+
 type Step struct {
-	job        *Job
 	workflow   *Workflow
 	definition *StepDefinition
 	register   *StepRegister
 	in         *Matrix
+	inDone     chan (struct{})
 	out        *Matrix
-	done       chan (struct{})
+	outDone    chan (struct{})
+	state      stepState
 }
 
-func newStep(job *Job, workflow *Workflow, difinition *StepDefinition, register *StepRegister) *Step {
-	return &Step{
-		job:        job,
+func newStep(workflow *Workflow, difinition *StepDefinition, register *StepRegister) *Step {
+	step := &Step{
 		workflow:   workflow,
 		definition: difinition,
 		register:   register,
-		done:       make(chan struct{}),
+		inDone:     make(chan struct{}),
+		outDone:    make(chan struct{}),
+	}
+	return step
+}
+
+func (s *Step) pathLog() string {
+	b := new(strings.Builder)
+	b.WriteString(fmt.Sprintf("Workflow%v", s.workflow.index))
+	for _, step := range s.workflow.steps {
+		name := step.definition.Name
+		if len(name) != 0 {
+			name = "(" + name + ")"
+		}
+
+		b.WriteString(fmt.Sprintf(" -> %v%v", step.definition.Step, name))
+		if step == s {
+			break
+		}
+	}
+	return b.String()
+}
+
+func (s *Step) GetMatrix(expression string) *Matrix {
+	stepName, matrixName, err := s.workflow.job.parseMatrixNameExp(expression)
+	if err != nil {
+		panic(err)
+	}
+
+	if stepName == s.definition.Name {
+		panic("cant use this function to access itself")
+	}
+
+	if stepName == "prev" {
+		prevStep, err := s.workflow.getPrevStep()
+		if err != nil {
+			panic(err)
+		}
+		if matrixName == "in" {
+			return prevStep.in
+		} else {
+			return prevStep.out
+		}
+	} else {
+		selfIndex := func() int {
+			for i, step := range s.workflow.steps {
+				if step == s {
+					return i
+				}
+			}
+			panic("memory exception")
+		}()
+
+		// 先从所属的 workflow 进行查找
+		for i := 0; i < selfIndex && i < len(s.workflow.steps); i++ {
+			step := s.workflow.steps[i]
+			if step.definition.Name == stepName {
+				if matrixName == "in" {
+					return step.in
+				} else {
+					return step.out
+				}
+			}
+		}
+
+		// 再从其他 workflow 查找
+		return func() *Matrix {
+			for _, workflow := range s.workflow.job.workflows {
+				if workflow == s.workflow {
+					continue
+				}
+				for _, step := range workflow.steps {
+					if step.definition.Name == stepName {
+						if matrixName == "in" {
+							<-step.inDone
+							return step.in
+						} else {
+							<-step.outDone
+							return step.out
+						}
+					}
+				}
+			}
+			panic(fmt.Errorf("not found matrix: %v", expression))
+		}()
 	}
 }
 
-func (s *Step) Apply(value string, valueName string, expression string) string {
-	s.job.gengineCtx.Add(valueName, value)
-	return s.job.Gengine(s, expression)
-}
-
-func (s *Step) GetDefinition() *StepDefinition {
-	return s.definition
-}
-
-func (s *Step) GetRegister() *StepRegister {
-	return s.register
-}
-
-func (s *Step) GetMatrix(exp string) *Matrix {
-	return s.job.GetMatrix(s.definition, exp)
-}
-
-func (s *Step) getOut() *Matrix {
-	select {
-	case <-s.done: // chan 被关闭后，可以立即读到数据
-		return s.out
-	case <-time.After(MaxWaitStepSeconds * time.Second):
-		panic("overtime")
-	}
-}
-
-func (s *Step) execute() {
+func (s *Step) execute(ctx context.Context) {
 	noExps := make([]string, 0)
 	for _, row := range s.definition.In {
-		data := row
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		noExp := row
 		re := regexp.MustCompile(`\(\((.*?)\)\)`)
 		matches := re.FindAllStringSubmatch(row, -1)
 		for _, match := range matches {
-			result := s.job.Gengine(s, match[1])
-			data = strings.Replace(data, match[0], result, 1)
+			result, err := s.gengineExecute(match[1])
+			if err != nil {
+				panic(err)
+			}
+			noExp = strings.Replace(noExp, match[0], result, 1)
 		}
-		noExps = append(noExps, data)
+		noExps = append(noExps, noExp)
 	}
 
 	in := NewMatrix()
 	in.SetCol(0, noExps)
 	s.in = in
+	close(s.inDone)
 
 	out := NewMatrix()
 	s.out = out
 
-	s.register.f(s, in, out)
+	select {
+	case <-ctx.Done():
+		return
+	default:
+		s.register.f(s, in, out)
+		close(s.outDone)
+	}
+}
+
+func (s *Step) GengineAddContext(key string, obj any) {
+	s.workflow.gengineCtx.Add(key, obj)
+}
+
+// 运行表达式
+func (s *Step) gengineExecute(expression string) (string, error) {
+	// 更新 Function 中的 Step 指针
+	for name, f := range functions {
+		s.workflow.gengineCtx.Add(name, f(s))
+	}
+	return s.workflow.gengineExecute(expression)
+}
+
+func (s *Step) GengineExecute(expression string) string {
+	result, err := s.gengineExecute(expression)
+	if err != nil {
+		panic(err)
+	}
+	return result
 }
 
 type Workflow struct {
-	job   *Job
-	steps []*Step
+	job        *Job
+	steps      []*Step
+	gengineCtx *gcontext.DataContext
+	stepIndex  int
+	index      int
 }
 
-func (w *Workflow) execute() {
-	for _, step := range w.steps {
-		step.execute()
-		close(step.done)
+func newWorkflow(job *Job, definition *WorkflowDefinition, workflowIndex int) (*Workflow, error) {
+	workflow := &Workflow{
+		job:        job,
+		steps:      make([]*Step, 0, len(definition.Steps)),
+		gengineCtx: gcontext.NewDataContext(),
+		index:      workflowIndex,
 	}
+
+	workflow.gengineCtx.Add("input", job.input)
+	workflow.gengineCtx.Add("env", envMap)
+
+	for _, stepDef := range definition.Steps {
+		registedStep := steps[stepDef.Step]
+		if registedStep == nil {
+			return nil, fmt.Errorf("definition not found: %v", stepDef.Step)
+		}
+
+		step := newStep(workflow, stepDef, registedStep)
+		workflow.steps = append(workflow.steps, step)
+	}
+
+	return workflow, nil
+}
+
+func (w *Workflow) executeStep(ctx context.Context, s *Step) error {
+	stepCtx, cancel := context.WithTimeout(ctx, StepMaxLifetime)
+	defer cancel()
+
+	resultChan := make(chan error, 1)
+	go func(step *Step) {
+		defer func() {
+			if r := recover(); r != nil {
+				err := &StepError{
+					step:    step,
+					message: r,
+					stack:   debug.Stack(),
+				}
+				resultChan <- err
+			} else {
+				resultChan <- nil
+			}
+		}()
+		step.execute(stepCtx)
+	}(s)
+
+	select {
+	case err := <-resultChan:
+		s.state = statePass
+		if err != nil {
+			s.state = stateFail
+		}
+		return err
+	case <-stepCtx.Done():
+		s.state = stateCancelOrTimeout
+		return &StepError{
+			step:    s,
+			message: "cancel or timeout",
+			stack:   debug.Stack(),
+		}
+	}
+}
+
+func (w *Workflow) execute(ctx context.Context) error {
+	for i, s := range w.steps {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+			w.stepIndex = i
+
+			if err := w.executeStep(ctx, s); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (w *Workflow) getPrevStep() (*Step, error) {
+	if w.stepIndex == 0 {
+		return nil, errors.New("cant call prev here")
+	}
+	return w.steps[w.stepIndex-1], nil
+}
+
+func (w *Workflow) gengineExecute(expression string) (string, error) {
+	script := "rule \"job\"\n" +
+		"begin\n" +
+		"return " + expression + "\n" +
+		"end"
+	rb := builder.NewRuleBuilder(w.gengineCtx)
+	if err := rb.BuildRuleFromString(script); err != nil {
+		return "", err
+	}
+	eng := engine.NewGengine()
+	if err := eng.Execute(rb, false); err != nil {
+		return "", err
+	}
+	result, err := eng.GetRulesResultMap()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%v", result["job"]), nil
 }
 
 type Job struct {
@@ -166,23 +392,18 @@ type Job struct {
 	input      map[string]string
 	env        map[string]string
 	workflows  []*Workflow
-	gengineCtx *context.DataContext
 }
 
-/*
-input:
-(n, 2)
-age, 18
-gender, 1
-score, 80
-*/
-func NewJob(yamlString string, input []string) *Job {
-	definition := NewJobDefinition([]byte(yamlString))
+func NewJob(yamlString string, input []string) (*Job, error) {
+	definition, err := NewJobDefinition([]byte(yamlString))
+	if err != nil {
+		return nil, err
+	}
+
 	job := &Job{
 		definition: definition,
 		workflows:  make([]*Workflow, 0, len(definition.Workflows)),
 		env:        envMap,
-		gengineCtx: context.NewDataContext(),
 	}
 
 	inputMap := make(map[string]string)
@@ -194,116 +415,156 @@ func NewJob(yamlString string, input []string) *Job {
 	}
 	job.input = inputMap
 
-	job.gengineCtx.Add("input", inputMap)
-	job.gengineCtx.Add("env", envMap)
-
-	for _, workflowDef := range definition.Workflows {
-		workflow := &Workflow{
-			job:   job,
-			steps: make([]*Step, 0, len(workflowDef.Steps)),
-		}
-		for _, stepDef := range workflowDef.Steps {
-			stepReg := steps[stepDef.Step]
-			if stepReg == nil {
-				panic("no step " + stepDef.Step)
-			}
-
-			step := newStep(job, workflow, stepDef, stepReg)
-			workflow.steps = append(workflow.steps, step)
+	for index, workflowDef := range definition.Workflows {
+		workflow, err := newWorkflow(job, workflowDef, index)
+		if err != nil {
+			return nil, err
 		}
 		job.workflows = append(job.workflows, workflow)
 	}
 
-	return job
+	return job, nil
 }
 
-func (j *Job) Execute() *Matrix {
-	wg := new(sync.WaitGroup)
+func (j *Job) ExecutionLog() string {
+	b := new(strings.Builder)
+	b.WriteString(fmt.Sprintf("Job execution: %v", j.definition.Name))
+	for i, workflow := range j.workflows {
+		b.WriteString(fmt.Sprintf("\nWorkflow%v: ", i))
+		for j, step := range workflow.steps {
+			name := step.definition.Name
+			if len(name) != 0 {
+				name = "(" + name + ")"
+			}
+
+			state := ""
+			if step.state == statePass {
+				state = " [PASS]"
+			} else if step.state == stateFail {
+				state = " [FAIL]"
+			} else if step.state == stateCancelOrTimeout {
+				state = " [CANCEL or TIMEOUT]"
+			}
+
+			if j > 0 {
+				b.WriteString(" -> ")
+			}
+			b.WriteString(step.definition.Step + name)
+			if state != "" {
+				b.WriteString(state)
+			}
+		}
+	}
+	return b.String()
+}
+
+func (j *Job) MemoryModelLog() string {
+	b := new(strings.Builder)
+	b.WriteString(fmt.Sprintf("Job memory model: %v", j.definition.Name))
+	b.WriteString(fmt.Sprintf("\ninput: %v", j.input))
+	b.WriteString(fmt.Sprintf("\noutput: %v", j.definition.Output))
+	for _, workflow := range j.workflows {
+		for _, step := range workflow.steps {
+			if step.in != nil {
+				b.WriteString(fmt.Sprintf("\n%v => in:\n%v", step.pathLog(), step.in))
+			}
+			if step.out != nil {
+				b.WriteString(fmt.Sprintf("\n%v => out:\n%v", step.pathLog(), step.out))
+			}
+		}
+	}
+	return b.String()
+}
+
+// Job 的最小执行单位是 Step，
+// Workflow 会捕获在 Step 中产生的 panic，
+// 所以在 Step、Function 的实现里可以直接抛出 panic。
+//
+// 这样做的目的是降低 Step、Function 的开发成本，
+// 简化 YAML 的定义。
+//
+// 工作机制：
+//
+// 1. Workflow 在捕获到 panic 后立即通知其他 Workflow 停止执行
+//
+// 2. 创建包含错误描述、Step 路径、goroutine 堆栈的 StepError 对象
+//
+// 3. 传递 StepError 给 Job 并返回给调用方
+//
+// 4. Step 执行超时（StepMaxLifetime = 30 seconds）抛出 StepError
+func (j *Job) Execute() (out *Matrix, err error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	doneChan := make(chan struct{})
+	var wg sync.WaitGroup
 	wg.Add(len(j.workflows))
+	go func() {
+		wg.Wait()
+		close(doneChan)
+	}()
+
+	errorChan := make(chan error, 1)
 	for _, w := range j.workflows {
 		go func(workflow *Workflow) {
-			workflow.execute()
-			wg.Done()
-		}(w)
-	}
-	wg.Wait()
+			defer wg.Done()
 
-	return j.GetMatrix(nil, j.definition.Output)
-}
-
-func (j *Job) GetMatrix(stepDef *StepDefinition, exp string) *Matrix {
-	seps := strings.Split(exp, ".")
-	if len(seps) != 2 {
-		panic("wrong name " + exp)
-	}
-	stepName := seps[0]
-	matrixName := seps[1]
-
-	var foundStep *Step
-	if stepName == "prev" {
-		if stepDef == nil {
-			panic("no step but require prev")
-		}
-		for _, workflow := range j.workflows {
-			for i, step := range workflow.steps {
-				if step.definition == stepDef {
-					foundStep = workflow.steps[i-1]
-					break
+			if err := workflow.execute(ctx); err != nil {
+				select {
+				case errorChan <- err:
+				default:
+					// 只捕获一个 panic
 				}
 			}
-			if foundStep != nil {
-				break
-			}
-		}
-	} else {
+		}(w)
+	}
+
+	select {
+	case err := <-errorChan:
+		// 通知其他 workflow 停止
+		cancel()
+		<-doneChan
+
+		return nil, err
+	case <-doneChan:
+		return j.GetMatrix(j.definition.Output)
+	}
+}
+
+func (j *Job) parseMatrixNameExp(expression string) (stepName, matrixName string, err error) {
+	parts := strings.Split(expression, ".")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("illegal expression: %v", expression)
+	}
+
+	stepName = parts[0]
+	matrixName = parts[1]
+	if matrixName != "in" && matrixName != "out" {
+		return "", "", fmt.Errorf("illegal matrix name: %v", matrixName)
+	}
+	return stepName, matrixName, nil
+}
+
+func (j *Job) GetMatrix(expression string) (*Matrix, error) {
+	stepName, matrixName, err := j.parseMatrixNameExp(expression)
+	if err != nil {
+		return nil, err
+	}
+
+	return func() (*Matrix, error) {
 		for _, workflow := range j.workflows {
 			for _, step := range workflow.steps {
 				if step.definition.Name == stepName {
-					foundStep = step
-					break
+					if matrixName == "in" {
+						return step.in, nil
+					} else {
+						return step.out, nil
+					}
 				}
 			}
-			if foundStep != nil {
-				break
-			}
 		}
-	}
-
-	if foundStep == nil {
-		panic("not found step " + stepName)
-	}
-
-	if matrixName == "in" {
-		return foundStep.in
-	} else if matrixName == "out" {
-		return foundStep.getOut()
-	} else {
-		panic("wrong matrix name " + matrixName)
-	}
-}
-
-func (j *Job) Gengine(step *Step, expression string) string {
-	for name, f := range functions {
-		j.gengineCtx.Add(name, f(step))
-	}
-
-	script := "rule \"job\"\n" +
-		"begin\n" +
-		"return " + expression + "\n" +
-		"end"
-	rb := builder.NewRuleBuilder(j.gengineCtx)
-	if err := rb.BuildRuleFromString(script); err != nil {
-		panic(err)
-	}
-	eng := engine.NewGengine()
-	if err := eng.Execute(rb, false); err != nil {
-		panic(err)
-	}
-	result, err := eng.GetRulesResultMap()
-	if err != nil {
-		panic(err)
-	}
-	return fmt.Sprintf("%v", result["job"])
+		return nil, fmt.Errorf("not found matrix: %v", expression)
+	}()
 }
 
 type StepDefinition struct {
@@ -312,19 +573,21 @@ type StepDefinition struct {
 	In   []string `yaml:"in"`
 }
 
-type JobDefinition struct {
-	Name      string              `yaml:"name"`
-	Input     []map[string]string `yaml:"input"`
-	Workflows []struct {
-		Steps []*StepDefinition `yaml:"workflow"`
-	} `yaml:"workflows"`
-	Output string `yaml:"output"`
+type WorkflowDefinition struct {
+	Steps []*StepDefinition `yaml:"workflow"`
 }
 
-func NewJobDefinition(raw []byte) *JobDefinition {
+type JobDefinition struct {
+	Name      string                `yaml:"name"`
+	Input     []map[string]string   `yaml:"input"`
+	Workflows []*WorkflowDefinition `yaml:"workflows"`
+	Output    string                `yaml:"output"`
+}
+
+func NewJobDefinition(raw []byte) (*JobDefinition, error) {
 	result := &JobDefinition{}
 	if err := yaml.Unmarshal(raw, result); err != nil {
-		panic(err)
+		return nil, err
 	}
-	return result
+	return result, nil
 }

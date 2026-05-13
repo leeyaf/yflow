@@ -17,11 +17,16 @@ func TestFunctions(t *testing.T) {
 
 	yflow.RegistEnv("aInt", "-2")
 	yflow.RegistEnv("aFloat", "-2.3")
-	job := yflow.NewJob(string(raw), []string{})
-	result := job.Execute()
+	job, err := yflow.NewJob(string(raw), []string{})
+	if err != nil {
+		panic(err)
+	}
+	result, err := job.Execute()
+	if err != nil {
+		panic(err)
+	}
 	fmt.Println(result)
 }
-
 func TestTimePases(t *testing.T) {
 	res, err := time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", "2025-06-04 10:46:47 +0800 CST")
 	if err != nil {

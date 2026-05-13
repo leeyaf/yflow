@@ -119,31 +119,43 @@ func main() {
 
     // Inputs defined in the yaml can have their values fetched via expressions
     input := []string{
-        "1",                        // minLevel
-        "1001,1002,1003,1004,1005", // configIds
-        "2",                        // page
-    }
+		"1",              // minLevel
+		"1001,1002,1005", // configIds
+		"2",              // page
+	}
 
     // Create a workflow job
-    job := yflow.NewJob(string(yamlData), input)
+    job, err := yflow.NewJob(string(yamlData), input)
+    if err != nil {
+      panic(err)
+    }
 
     // Execute the workflow
-    matrixResult := job.Execute()
-    fmt.Println(matrixResult)
+    matrixResult, err := job.Execute()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(matrixResult)
+	fmt.Println(job.ExecutionLog())
+	// fmt.Println(job.MemoryModelLog())
 }
 ````
 
 #### Output
 
 ```` log
-INFO MysqlExecute sql="select id, level, player_id, config_id, created_time from hero where level > 1 and config_id in (1001,1002,1003,1004,1005) order by id desc limit 5, 5"
-(6, 5)
+INFO MysqlExecute sql="select id, level, player_id, config_id, created_time from hero where level > 1 and config_id in (1001,1002,1005) order by id desc limit 5, 5"
+Matrix(6, 5)
 Id, Level, PlayerId, ConfigId, UnlockAt
-464, 14, 18, 1004, 2026-01-15 10:48
-460, 83, 16, Batman, 2026-04-01 10:48
-459, 6, 7, 1004, 2025-05-28 10:48
-457, 74, 3, Superman, 2025-09-29 10:48
-453, 13, 18, Batman, 2025-08-06 10:48
+447, 52, 15, Spider-Man, 2025-11-03 10:48
+445, 63, 9, 1005, 2025-11-30 10:48
+443, 9, 18, Spider-Man, 2026-04-20 10:48
+440, 30, 2, Spider-Man, 2025-11-24 10:48
+439, 50, 17, 1005, 2025-08-04 10:48
+Job execution: myflow
+Workflow0: MysqlExecute [PASS] -> MatrixApply(tableData) [PASS]
+Workflow1: MatrixNew [PASS] -> MatrixVLookUp [PASS] -> MatrixInsert(result) [PASS]
 ````
 
 ## Configuration Guide
@@ -157,12 +169,11 @@ input: # Original input
   - phone: phoneNumber
 workflows:
   - workflow: # First workflow
-    - step: MatrixNew # Name of a registered Step
+    - step: Test # Name of a registered Step
       name: result # Step name (optional)
       in: # Input for this Step
-        - "," # MatrixNew expects row 0, column 0 to define the separator
-        - a, b, c, d # First row of the matrix
-        - 1, 2, 3, 4 # Second row of the matrix
+        - a
+        - b
   - workflow: # Second workflow (executed in parallel)
     - step: Test
 output: result.out # Points to a Step's output
@@ -201,8 +212,6 @@ yflow.RegistStep("MyStep", sMyStep)
 ````
 
 ### Adding a Function
-
-#### Implementation
 
 ```` go
 // For functions that do NOT need access to the current Step

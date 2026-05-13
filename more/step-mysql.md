@@ -17,11 +17,7 @@ import (
 )
 
 func init() {
-	yflow.RegistStep(
-		"MysqlExecute",
-		[]string{"Uri", "Sql"},
-		sMysqlExecute,
-	)
+	yflow.RegistStep("MysqlExecute", sMysqlExecute)
 }
 
 // 执行 MySQL 查询

@@ -18,15 +18,24 @@ func main() {
 
 	// yaml 中定义的 input, 可以用表达式获取值
 	input := []string{
-		"1",                        // minLevel
-		"1001,1002,1003,1004,1005", // configIds
-		"2",                        // page
+		"1",              // minLevel
+		"1001,1002,1005", // configIds
+		"2",              // page
 	}
 
 	// 创建工作流
-	job := yflow.NewJob(string(yamlData), input)
+	job, err := yflow.NewJob(string(yamlData), input)
+	if err != nil {
+		panic(err)
+	}
 
 	// 执行工作流
-	matrixResult := job.Execute()
+	matrixResult, err := job.Execute()
+	if err != nil {
+		panic(err)
+	}
+
 	fmt.Println(matrixResult)
+	fmt.Println(job.ExecutionLog())
+	// fmt.Println(job.MemoryModelLog())
 }

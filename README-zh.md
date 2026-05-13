@@ -117,17 +117,26 @@ func main() {
 
     // yaml 中定义的 input, 可以用表达式获取值
     input := []string{
-        "1",                        // minLevel
-        "1001,1002,1003,1004,1005", // configIds
-        "2",                        // page
+        "1",              // minLevel
+        "1001,1002,1005", // configIds
+        "2",              // page
     }
 
     // 创建工作流
-    job := yflow.NewJob(string(yamlData), input)
+    job, err := yflow.NewJob(string(yamlData), input)
+    if err != nil {
+      panic(err)
+    }
 
     // 执行工作流
-    matrixResult := job.Execute()
-    fmt.Println(matrixResult)
+    matrixResult, err := job.Execute()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(matrixResult)
+	fmt.Println(job.ExecutionLog())
+	// fmt.Println(job.MemoryModelLog())
 }
 
 ````
@@ -135,14 +144,17 @@ func main() {
 #### 输出
 
 ```` log
-INFO MysqlExecute sql="select id, level, player_id, config_id, created_time from hero where level > 1 and config_id in (1001,1002,1003,1004,1005) order by id desc limit 5, 5"
-(6, 5)
+INFO MysqlExecute sql="select id, level, player_id, config_id, created_time from hero where level > 1 and config_id in (1001,1002,1005) order by id desc limit 5, 5"
+Matrix(6, 5)
 Id, Level, PlayerId, ConfigId, UnlockAt
-464, 14, 18, 1004, 2026-01-15 10:48
-460, 83, 16, Batman, 2026-04-01 10:48
-459, 6, 7, 1004, 2025-05-28 10:48
-457, 74, 3, Superman, 2025-09-29 10:48
-453, 13, 18, Batman, 2025-08-06 10:48
+447, 52, 15, Spider-Man, 2025-11-03 10:48
+445, 63, 9, 1005, 2025-11-30 10:48
+443, 9, 18, Spider-Man, 2026-04-20 10:48
+440, 30, 2, Spider-Man, 2025-11-24 10:48
+439, 50, 17, 1005, 2025-08-04 10:48
+Job execution: myflow
+Workflow0: MysqlExecute [PASS] -> MatrixApply(tableData) [PASS]
+Workflow1: MatrixNew [PASS] -> MatrixVLookUp [PASS] -> MatrixInsert(result) [PASS]
 ````
 
 ## 配置说明
@@ -156,12 +168,11 @@ input: # 原始输入
   - phone: phoneNumber
 workflows:
   - workflow: # 第一个工作流
-    - step: MatrixNew # 已注册的 Step 名
+    - step: Test # 已注册的 Step 名
       name: result # 步骤名称（可选）
       in: # 这个 Step 的输入
-          - "," # MatrixNew 要求第 0 行 0 列是分隔符定义
-        - a, b, c, d # 矩阵的第一行
-        - 1, 2, 3, 4 # 矩阵的第二行
+        - a
+        - b
   - workflow: # 第二个工作流（并行执行）
     - step: Test
 output: result.out # 指向 Step
@@ -192,7 +203,7 @@ output: result.out # 指向 Step
 ### 添加 Step
 
 ```` go
-func sMyStep(s *yflow.Step,in *yflow.Matrix, out *yflow.Matrix) {
+func sMyStep(s *yflow.Step, in *yflow.Matrix, out *yflow.Matrix) {
     // 把处理结果写入到 out
 }
 
@@ -200,8 +211,6 @@ yflow.RegistStep("MyStep", sMyStep)
 ````
 
 ### 添加 Function
-
-#### 实现
 
 ```` go
 // 不需要访问当前 Step 的

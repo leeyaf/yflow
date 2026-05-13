@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	printMax = 11
+	MatrixPrintMaxRowsOrCols = 11
 )
 
 type column struct {
@@ -204,36 +204,35 @@ func (m *Matrix) Resize(rows int, cols int, defaultValue string) {
 func (m *Matrix) String() string {
 	rows, cols := m.Shape()
 	b := new(strings.Builder)
-	b.WriteString(fmt.Sprintf("(%v, %v)\n", rows, cols))
-	if rows <= printMax {
+	b.WriteString(fmt.Sprintf("Matrix(%v, %v)\n", rows, cols))
+
+	rowString := func(row int) {
+		breaker := ""
+		if row+1 < rows {
+			breaker = "\n"
+		}
+		if cols <= MatrixPrintMaxRowsOrCols {
+			m.subRowString(b, row, 0, cols, breaker)
+		} else {
+			m.subRowString(b, row, 0, (MatrixPrintMaxRowsOrCols-1)/2, ", .., ")
+			m.subRowString(b, row, cols-(MatrixPrintMaxRowsOrCols-1)/2, cols, breaker)
+		}
+	}
+
+	if rows <= MatrixPrintMaxRowsOrCols {
 		for row := range rows {
-			m.rowString(b, row)
+			rowString(row)
 		}
 	} else {
-		for row := range (printMax - 1) / 2 {
-			m.rowString(b, row)
+		for row := range (MatrixPrintMaxRowsOrCols - 1) / 2 {
+			rowString(row)
 		}
 		b.WriteString("..\n")
-		for row := rows - (printMax-1)/2; row < rows; row++ {
-			m.rowString(b, row)
+		for row := rows - (MatrixPrintMaxRowsOrCols-1)/2; row < rows; row++ {
+			rowString(row)
 		}
 	}
 	return b.String()
-}
-
-func (m *Matrix) rowString(b *strings.Builder, row int) {
-	rows, cols := m.Shape()
-
-	breaker := ""
-	if row+1 < rows {
-		breaker = "\n"
-	}
-	if cols <= printMax {
-		m.subRowString(b, row, 0, cols, breaker)
-	} else {
-		m.subRowString(b, row, 0, (printMax-1)/2, ", .., ")
-		m.subRowString(b, row, cols-(printMax-1)/2, cols, breaker)
-	}
 }
 
 // (colFrom, colTo]

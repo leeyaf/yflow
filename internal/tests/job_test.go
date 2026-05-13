@@ -62,6 +62,9 @@ func TestYaml(t *testing.T) {
 	}
 
 	yflow.RegistEnv("mysqlUri", "root:123456@tcp(127.0.0.1:3306)/yamlql?charset=utf8mb4&parseTime=True&timeout=30s&loc=Local")
-	job := yflow.NewJob(string(raw), []string{"1", "1001,1002,1003,1004,1005", "1"})
+	job, err := yflow.NewJob(string(raw), []string{"1", "1001,1002,1003,1004,1005", "1"})
+	if err != nil {
+		panic(err)
+	}
 	fmt.Println(job.Execute())
 }

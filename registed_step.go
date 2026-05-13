@@ -163,14 +163,16 @@ func sMatrixApply(s *Step, in *Matrix, out *Matrix) {
 	if rowOrCol == "row" {
 		newSlices := make([]string, 0)
 		for _, value := range out.GetRow(index) {
-			result := s.Apply(value, "value", expression)
+			s.GengineAddContext("value", value)
+			result := s.GengineExecute(expression)
 			newSlices = append(newSlices, result)
 		}
 		out.SetRow(index, newSlices)
 	} else if rowOrCol == "col" {
 		newSlices := make([]string, 0)
 		for _, value := range out.GetCol(index) {
-			result := s.Apply(value, "value", expression)
+			s.GengineAddContext("value", value)
+			result := s.GengineExecute(expression)
 			newSlices = append(newSlices, result)
 		}
 		out.SetCol(index, newSlices)
