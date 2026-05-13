@@ -1,12 +1,5 @@
-# StepMysql
+package main
 
-## MysqlExecute
-
-基于 [gorm.io/gorm](https://github.com/go-gorm/gorm) 实现对 MySQL 的操作
-
-可以保证列的顺序与查询顺序一致，默认丢弃列名
-
-```` go
 import (
 	"fmt"
 	"log/slog"
@@ -21,6 +14,10 @@ func init() {
 }
 
 // 执行 MySQL 查询
+//
+// 可以保证列的顺序与查询顺序一致，默认丢弃列名
+//
+// 基于 gorm.io/gorm 实现
 func sMysqlExecute(s *yflow.Step, in *yflow.Matrix, out *yflow.Matrix) {
 	uri := in.Get(0, 0) // 连接字符串
 	sql := in.Get(1, 0) // SQL
@@ -66,4 +63,3 @@ func sMysqlExecute(s *yflow.Step, in *yflow.Matrix, out *yflow.Matrix) {
 		out.AppendRow(sortedRowData)
 	}
 }
-````
