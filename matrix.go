@@ -178,7 +178,7 @@ func (m *Matrix) CopyTo(target *Matrix) {
 	target.columns = newColumns
 }
 
-func (m *Matrix) Resize(rows int, cols int, defaultValue string) {
+func (m *Matrix) Resize(rows int, cols int, defaultValue string) (int, int) {
 	if rows < 0 || cols < 0 {
 		panic("negative rows or cols")
 	}
@@ -199,6 +199,7 @@ func (m *Matrix) Resize(rows int, cols int, defaultValue string) {
 	} else if cols < oldCols { // 剪裁
 		m.columns = m.columns[:cols]
 	}
+	return rows, cols
 }
 
 func (m *Matrix) String() string {
@@ -330,9 +331,12 @@ func (m *Matrix) InsertRow(row int, data []string) {
 	if row < 0 {
 		panic("negative row")
 	}
+	if data == nil || len(data) < 1 {
+		panic("empty data")
+	}
 
 	rows, cols := m.Shape()
-	m.Resize(rows+1, cols, "")
+	m.Resize(rows+1, max(cols, len(data)), "")
 
 	// 只移动插入行之后的行，每行的数据等于上一行的数据
 	for i := rows; i > row; i-- {
@@ -342,8 +346,12 @@ func (m *Matrix) InsertRow(row int, data []string) {
 	}
 
 	// 插入该行
-	for i, column := range m.columns {
-		column.set(row, data[i])
+	for j, column := range m.columns {
+		if j < len(data) {
+			column.set(row, data[j])
+		} else {
+			column.set(row, "")
+		}
 	}
 }
 
@@ -352,17 +360,24 @@ func (m *Matrix) InsertCol(col int, data []string) {
 	if col < 0 {
 		panic("negative col")
 	}
+	if data == nil || len(data) < 1 {
+		panic("empty data")
+	}
 
 	rows, cols := m.Shape()
-	m.Resize(rows, cols+1, "")
+	m.Resize(max(rows, len(data)), cols+1, "")
 
 	// 只移动插入列之后的列，每列的数据等于前一列的数据
+	lastColumn := m.columns[len(m.columns)-1]
 	for i := cols; i > col; i-- {
 		m.columns[i] = m.columns[i-1]
 	}
+	m.columns[col] = lastColumn
 
 	// 插入该列
-	m.columns[col].setData(data)
+	for i, v := range data {
+		m.columns[col].set(i, v)
+	}
 }
 
 // 设置某行的数据
@@ -370,12 +385,19 @@ func (m *Matrix) SetRow(row int, data []string) {
 	if row < 0 {
 		panic("negative row")
 	}
+	if data == nil || len(data) < 1 {
+		panic("empty data")
+	}
 
 	rows, cols := m.Shape()
 	m.Resize(max(rows, row+1), max(cols, len(data)), "")
 
-	for j := range len(data) {
-		m.columns[j].set(row, data[j])
+	for col, column := range m.columns {
+		if col < len(data) {
+			column.set(row, data[col])
+		} else {
+			column.set(row, "")
+		}
 	}
 }
 
@@ -384,33 +406,48 @@ func (m *Matrix) SetCol(col int, data []string) {
 	if col < 0 {
 		panic("negative row")
 	}
+	if data == nil || len(data) < 1 {
+		panic("empty data")
+	}
 
 	rows, cols := m.Shape()
-	m.Resize(max(rows, len(data)), max(cols, col+1), "")
+	rows, cols = m.Resize(max(rows, len(data)), max(cols, col+1), "")
 
-	for i := range data {
-		m.columns[col].set(i, data[i])
+	for i := range rows {
+		if i < len(data) {
+			m.columns[col].set(i, data[i])
+		} else {
+			m.columns[col].set(i, "")
+		}
 	}
 }
 
 // 在末尾添加一行
 func (m *Matrix) AppendRow(data []string) {
-	rows, cols := m.Shape()
-	m.Resize(rows, max(cols, len(data)), "")
+	if data == nil || len(data) < 1 {
+		panic("empty data")
+	}
 
-	for i, col := range m.columns {
-		col.append(data[i])
+	rows, cols := m.Shape()
+	rows, cols = m.Resize(rows+1, max(cols, len(data)), "")
+
+	for col, v := range data {
+		m.columns[col].set(rows-1, v)
 	}
 }
 
 // 在末尾添加一列
 func (m *Matrix) AppendCol(data []string) {
-	rows, cols := m.Shape()
-	m.Resize(max(rows, len(data)), cols, "")
+	if data == nil || len(data) < 1 {
+		panic("empty data")
+	}
 
-	column := newColumn()
-	column.setData(data)
-	m.columns = append(m.columns, column)
+	rows, cols := m.Shape()
+	rows, cols = m.Resize(max(rows, len(data)), cols+1, "")
+
+	for i, v := range data {
+		m.columns[cols-1].set(i, v)
+	}
 }
 
 func (m *Matrix) GetRow(row int) []string {

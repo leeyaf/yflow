@@ -46,7 +46,7 @@ workflows:
 output: result.out # Points to a Step's output
 ````
 
-The Steps registered by default are in [registed_step.go](./registed_step.go).
+Predefined Steps are available in [registed_step.go](./registed_step.go), and examples are in [registed_step_test.go](./registed_step_test.go).
 
 More Step implementations:
 
@@ -64,7 +64,7 @@ Expressions can be used in all ``step.in`` fields.
 
 Refer to [bilibili/gengine](https://github.com/bilibili/gengine/wiki/语法) for expression details.
 
-The Functions registered by default are in [registed_function.go](./registed_function.go).
+Predefined Functions are available in [registed_function.go](./registed_function.go), and examples are in [registed_function_test.go](./registed_function_test.go).
 
 ## Development Guide
 

@@ -44,7 +44,7 @@ workflows:
 output: result.out # 指向 Step
 ````
 
-已默认注册的 Step 在 [registed_step.go](./registed_step.go)
+直接可用的 Step 在 [registed_step.go](./registed_step.go)，使用示例 [registed_step_test.go](./registed_step_test.go)
 
 更多的 Step 实现：
 
@@ -62,7 +62,7 @@ output: result.out # 指向 Step
 
 参考 [bilibili/gengine语法](https://github.com/bilibili/gengine/wiki/语法)
 
-已默认注册的 Function 在 [registed_function.go](./registed_function.go)
+直接可用的 Function 在 [registed_function.go](./registed_function.go)，使用示例 [registed_function_test.go](./registed_function_test.go)
 
 ## 开发指南
 

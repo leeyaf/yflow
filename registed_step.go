@@ -16,6 +16,7 @@ func init() {
 	RegistStep("MatrixSelect", sMatrixSelect)
 	RegistStep("MatrixVLookUp", sMatrixVLookUp)
 	RegistStep("MatrixApply", sMatrixApply)
+	RegistStep("MatrixMerge", sMatrixMerge)
 }
 
 // 输出等于输入
@@ -49,7 +50,7 @@ func sMatrixEmpty(s *Step, in *Matrix, out *Matrix) {
 	out.Resize(rows, cols, defaultValue)
 }
 
-// 矩阵转置，行变成列，列变成行
+// 矩阵转置
 func sMatrixTranspose(s *Step, in *Matrix, out *Matrix) {
 	matrixName := in.Get(0, 0) // 要操作的矩阵名
 
@@ -150,20 +151,19 @@ func sMatrixVLookUp(s *Step, in *Matrix, out *Matrix) {
 //
 // 注意：表达式不要使用 (( )) 包裹
 // 包裹会按照 step.in 的逻辑统一处理
-//
-// value 代表元素的值
 func sMatrixApply(s *Step, in *Matrix, out *Matrix) {
 	sourceMatrixName := in.Get(0, 0) // 要操作的矩阵名
 	rowOrCol := in.Get(1, 0)         // 方向
 	index := in.GetInt(2, 0)         // 下标
-	expression := in.Get(3, 0)       // 表达式
+	varName := in.Get(3, 0)          // 元素的变量名
+	expression := in.Get(4, 0)       // 表达式
 
 	s.GetMatrix(sourceMatrixName).CopyTo(out)
 
 	if rowOrCol == "row" {
 		newSlices := make([]string, 0)
 		for _, value := range out.GetRow(index) {
-			s.GengineAddContext("value", value)
+			s.GengineAddContext(varName, value)
 			result := s.GengineExecute(expression)
 			newSlices = append(newSlices, result)
 		}
@@ -171,12 +171,37 @@ func sMatrixApply(s *Step, in *Matrix, out *Matrix) {
 	} else if rowOrCol == "col" {
 		newSlices := make([]string, 0)
 		for _, value := range out.GetCol(index) {
-			s.GengineAddContext("value", value)
+			s.GengineAddContext(varName, value)
 			result := s.GengineExecute(expression)
 			newSlices = append(newSlices, result)
 		}
 		out.SetCol(index, newSlices)
 	} else {
+		panic("wrong row or col")
+	}
+}
+
+// 按行或按列合并两个矩阵
+func sMatrixMerge(s *Step, in *Matrix, out *Matrix) {
+	matrixName1 := in.Get(0, 0) // 源矩阵1
+	matrixName2 := in.Get(1, 0) // 源矩阵2
+	rowOrCol := in.Get(2, 0)    // 方向
+
+	mergeMatrix := s.GetMatrix(matrixName2)
+	rows, cols := mergeMatrix.Shape()
+
+	s.GetMatrix(matrixName1).CopyTo(out)
+
+	switch rowOrCol {
+	case "row":
+		for row := range rows {
+			out.AppendRow(mergeMatrix.GetRow(row))
+		}
+	case "col":
+		for col := range cols {
+			out.AppendCol(mergeMatrix.GetCol(col))
+		}
+	default:
 		panic("wrong row or col")
 	}
 }
