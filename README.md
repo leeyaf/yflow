@@ -13,16 +13,6 @@ A declarative workflow engine based on YAML configuration, allowing you to defin
 * 🔄 **Multi-Workflow Support**: Executes multiple workflows in parallel by default.
 * 🧩 **Excellent Extensibility**: Both Steps and Functions can be extended, making it easy to customize your own processing logic.
 
-## Background
-
-Previously, when I served as the lead server programmer at a gaming company, after the game launched, operations and planning teams continuously requested data and reports from the server. Among these requests, some were one-time, while others were recurring. My initial strategy was simple: evaluate the nature of the request (short-term vs. long-term). Long-term needs were implemented in code, and one-time requests were handled with SQL + Excel. However, the problem was: many supposedly one-time requests would suddenly reappear one day. Recalling the lengthy steps I had previously implemented, I wondered: Could there be a low-cost way to formalize these lengthy procedures?
-
-Thus, I conceived and developed the original version (internal company code ``fakegm``). With ``fakegm``, we met various demands at a very low cost and no longer needed to evaluate their long-term or short-term nature (treating all as long-term). As it evolved, our server-side business code was eventually reduced to just login, timers, and other essentials; everything else became implementations of various Steps. The codebase shrank, but functionality became richer. We integrated numerous data sources: MySQL, Redis, Kubernetes, AliyunOSS, AliyunImage, GrafanaCloud, internal configuration management platforms, and internal game servers. On the frontend (web interface), aside from the basic Job management and execution page, we also created dedicated, polished pages for some particularly high-frequency needs. Of course, the basic Job management page could already fulfill all requirements, but the customized pages struck the perfect balance for various stakeholders.
-
-After accomplishing all this, we even began to look forward to various requests whose nature (long-term or short-term) was unclear: when existing Steps could meet the need, writing a YAML file would deliver the result; when existing Steps fell short, it was an opportunity to add a new one to our Step library!
-
-Now, ``yflow`` inherits the purest essence of ``fakegm``, completely recoded and redesigned to make Clean Work even cleaner.
-
 ## Quick Start
 
 ### Installation
@@ -112,6 +102,16 @@ yflow.RegistFunctionWithStep("MyFunction2", fMyFunction2)
 ## Memory Model
 
 ![memory-model](./memory-model.png)
+
+## Background
+
+Previously, when I served as the lead server programmer at a gaming company, after the game launched, operations and planning teams continuously requested data and reports from the server. Among these requests, some were one-time, while others were recurring. My initial strategy was simple: evaluate the nature of the request (short-term vs. long-term). Long-term needs were implemented in code, and one-time requests were handled with SQL + Excel. However, the problem was: many supposedly one-time requests would suddenly reappear one day. Recalling the lengthy steps I had previously implemented, I wondered: Could there be a low-cost way to formalize these lengthy procedures?
+
+Thus, I conceived and developed the original version (internal company code ``fakegm``). With ``fakegm``, we met various demands at a very low cost and no longer needed to evaluate their long-term or short-term nature (treating all as long-term). As it evolved, our server-side business code was eventually reduced to just login, timers, and other essentials; everything else became implementations of various Steps. The codebase shrank, but functionality became richer. We integrated numerous data sources: MySQL, Redis, Kubernetes, AliyunOSS, AliyunImage, GrafanaCloud, internal configuration management platforms, and internal game servers. On the frontend (web interface), aside from the basic Job management and execution page, we also created dedicated, polished pages for some particularly high-frequency needs. Of course, the basic Job management page could already fulfill all requirements, but the customized pages struck the perfect balance for various stakeholders.
+
+After accomplishing all this, we even began to look forward to various requests whose nature (long-term or short-term) was unclear: when existing Steps could meet the need, writing a YAML file would deliver the result; when existing Steps fell short, it was an opportunity to add a new one to our Step library!
+
+Now, ``yflow`` inherits the purest essence of ``fakegm``, completely recoded and redesigned to make Clean Work even cleaner.
 
 ## Contribution
 

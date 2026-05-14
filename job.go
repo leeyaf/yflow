@@ -99,7 +99,7 @@ func (e *StepError) Error() string {
 	return b.String()
 }
 
-const StepMaxLifetime = 3 * time.Second
+const StepMaxLifetime = 30 * time.Second
 
 type stepState uint8
 
@@ -149,6 +149,12 @@ func (s *Step) pathLog() string {
 	return b.String()
 }
 
+// 获取其他 Step 的 IO 矩阵，
+// 如果 Workflow 还未执行到其他 Step，会等待
+//
+// yourStepName.in yourStepName.out
+//
+// prev.in prev.out
 func (s *Step) GetMatrix(expression string) *Matrix {
 	stepName, matrixName, err := s.workflow.job.parseMatrixNameExp(expression)
 	if err != nil {
@@ -179,7 +185,7 @@ func (s *Step) GetMatrix(expression string) *Matrix {
 			panic("memory exception")
 		}()
 
-		// 先从所属的 workflow 进行查找
+		// 先从所属的 workflow 查找
 		for i := 0; i < selfIndex && i < len(s.workflow.steps); i++ {
 			step := s.workflow.steps[i]
 			if step.definition.Name == stepName {
@@ -227,10 +233,7 @@ func (s *Step) execute(ctx context.Context) {
 		re := regexp.MustCompile(`\(\((.*?)\)\)`)
 		matches := re.FindAllStringSubmatch(row, -1)
 		for _, match := range matches {
-			result, err := s.gengineExecute(match[1])
-			if err != nil {
-				panic(err)
-			}
+			result := s.GengineExecute(match[1])
 			noExp = strings.Replace(noExp, match[0], result, 1)
 		}
 		noExps = append(noExps, noExp)
@@ -257,17 +260,13 @@ func (s *Step) GengineAddContext(key string, obj any) {
 	s.workflow.gengineCtx.Add(key, obj)
 }
 
-// 运行表达式
-func (s *Step) gengineExecute(expression string) (string, error) {
+func (s *Step) GengineExecute(expression string) string {
 	// 更新 Function 中的 Step 指针
 	for name, f := range functions {
 		s.workflow.gengineCtx.Add(name, f(s))
 	}
-	return s.workflow.gengineExecute(expression)
-}
 
-func (s *Step) GengineExecute(expression string) string {
-	result, err := s.gengineExecute(expression)
+	result, err := s.workflow.gengineExecute(expression)
 	if err != nil {
 		panic(err)
 	}
@@ -310,7 +309,7 @@ func (w *Workflow) executeStep(ctx context.Context, s *Step) error {
 	stepCtx, cancel := context.WithTimeout(ctx, StepMaxLifetime)
 	defer cancel()
 
-	resultChan := make(chan error, 1)
+	errorChan := make(chan error, 1)
 	go func(step *Step) {
 		defer func() {
 			if r := recover(); r != nil {
@@ -319,16 +318,16 @@ func (w *Workflow) executeStep(ctx context.Context, s *Step) error {
 					message: r,
 					stack:   debug.Stack(),
 				}
-				resultChan <- err
+				errorChan <- err
 			} else {
-				resultChan <- nil
+				errorChan <- nil
 			}
 		}()
 		step.execute(stepCtx)
 	}(s)
 
 	select {
-	case err := <-resultChan:
+	case err := <-errorChan:
 		s.state = statePass
 		if err != nil {
 			s.state = stateFail
@@ -344,6 +343,7 @@ func (w *Workflow) executeStep(ctx context.Context, s *Step) error {
 	}
 }
 
+// 顺序执行 Step
 func (w *Workflow) execute(ctx context.Context) error {
 	for i, s := range w.steps {
 		select {
@@ -485,24 +485,21 @@ func (j *Job) MemoryModelLog() string {
 //
 // 工作机制：
 //
-// 1. Workflow 在捕获到 panic 后立即通知其他 Workflow 停止执行
+// 1. 并行执行多 Workflow
 //
-// 2. 创建包含错误描述、Step 路径、goroutine 堆栈的 StepError 对象
+// 2. Workflow 在捕获到 panic 后立即通知其他 Workflow 停止执行
 //
-// 3. 传递 StepError 给 Job 并返回给调用方
+// 3. 创建包含错误描述、Step 路径、goroutine 堆栈的 StepError 对象，
+// 传递给 Job 返回
 //
-// 4. Step 执行超时（StepMaxLifetime = 30 seconds）抛出 StepError
+// 4. Step 执行带有超时机制，超时时抛出 StepError，
+// StepMaxLifetime = 30 seconds
 func (j *Job) Execute() (out *Matrix, err error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	doneChan := make(chan struct{})
 	var wg sync.WaitGroup
 	wg.Add(len(j.workflows))
-	go func() {
-		wg.Wait()
-		close(doneChan)
-	}()
 
 	errorChan := make(chan error, 1)
 	for _, w := range j.workflows {
@@ -518,6 +515,12 @@ func (j *Job) Execute() (out *Matrix, err error) {
 			}
 		}(w)
 	}
+
+	doneChan := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(doneChan)
+	}()
 
 	select {
 	case err := <-errorChan:
