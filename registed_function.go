@@ -1,6 +1,7 @@
 package yflow
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -15,26 +16,27 @@ func init() {
 	RegistFunction("Join", fJoin)
 	RegistFunction("Split", fSplit)
 	RegistFunction("TimeConvert", fTimeConvert)
+	RegistFunction("Sprintf", fSprintf)
 }
 
 // 从矩阵中读取值
 func fCell(step *Step) any {
-	return func(matrixName string, row int, col int) string {
-		return step.GetMatrix(matrixName).Get(row, col)
+	return func(matrixPath string, row int, col int) string {
+		return step.GetMatrix(matrixPath).Get(row, col)
 	}
 }
 
 // 从矩阵中读取一行
 func fRow(step *Step) any {
-	return func(matrixName string, row int) []string {
-		return step.GetMatrix(matrixName).GetRow(row)
+	return func(matrixPath string, row int) []string {
+		return step.GetMatrix(matrixPath).GetRow(row)
 	}
 }
 
 // 从矩阵中读取一列
 func fCol(step *Step) any {
-	return func(matrixName string, col int) []string {
-		return step.GetMatrix(matrixName).GetCol(col)
+	return func(matrixPath string, col int) []string {
+		return step.GetMatrix(matrixPath).GetCol(col)
 	}
 }
 
@@ -116,4 +118,9 @@ func fTimeConvert(s string, oldLayout string, newLayout string) string {
 		panic(err)
 	}
 	return t.Format(newLayout)
+}
+
+// fmt.Sprintf()
+func fSprintf(s string, a ...any) string {
+	return fmt.Sprintf(s, a...)
 }

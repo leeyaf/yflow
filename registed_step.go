@@ -52,30 +52,30 @@ func sMatrixEmpty(s *Step, in *Matrix, out *Matrix) {
 
 // 矩阵转置
 func sMatrixTranspose(s *Step, in *Matrix, out *Matrix) {
-	matrixName := in.Get(0, 0) // 要操作的矩阵名
+	matrixPath := in.Get(0, 0) // 要操作的矩阵名
 
-	s.GetMatrix(matrixName).CopyTo(out)
+	s.GetMatrix(matrixPath).CopyTo(out)
 	out.Transpose()
 }
 
 // 根据矩阵的某列排序，该列的数据转成 float64 后排序
 func sMatrixSort(s *Step, in *Matrix, out *Matrix) {
-	matrixName := in.Get(0, 0) // 要操作的矩阵名
+	matrixPath := in.Get(0, 0) // 要操作的矩阵名
 	col := in.GetInt(1, 0)     // 列下标
 	ascOrDesc := in.Get(2, 0)  // 升序或降序
 
-	s.GetMatrix(matrixName).CopyTo(out)
+	s.GetMatrix(matrixPath).CopyTo(out)
 	out.Sort(col, ascOrDesc == "asc")
 }
 
 // 插入一行或一列到矩阵
 func sMatrixInsert(s *Step, in *Matrix, out *Matrix) {
-	matrixName := in.Get(0, 0) // 要操作的矩阵名
+	matrixPath := in.Get(0, 0) // 要操作的矩阵名
 	rowOrCol := in.Get(1, 0)   // 方向
 	index := in.GetInt(2, 0)   // 下标
 	values := in.GetCol(0)[3:] // 数据
 
-	s.GetMatrix(matrixName).CopyTo(out)
+	s.GetMatrix(matrixPath).CopyTo(out)
 
 	if rowOrCol == "row" {
 		out.InsertRow(index, values)
@@ -88,11 +88,11 @@ func sMatrixInsert(s *Step, in *Matrix, out *Matrix) {
 
 // 筛选矩阵的多行或多列
 func sMatrixSelect(s *Step, in *Matrix, out *Matrix) {
-	sourceMatrixName := in.Get(0, 0) // 原矩阵名
-	rowOrCol := in.Get(1, 0)         // 方向
-	indexs := in.GetCol(0)[2:]       // 下标数组
+	matrixPath := in.Get(0, 0) // 原矩阵名
+	rowOrCol := in.Get(1, 0)   // 方向
+	indexs := in.GetCol(0)[2:] // 下标数组
 
-	sourceMatrix := s.GetMatrix(sourceMatrixName)
+	sourceMatrix := s.GetMatrix(matrixPath)
 	for _, index := range indexs {
 		i, err := strconv.ParseInt(index, 10, 64)
 		if err != nil {
@@ -112,14 +112,14 @@ func sMatrixSelect(s *Step, in *Matrix, out *Matrix) {
 
 // 垂直查找并替换矩阵的一列
 func sMatrixVLookUp(s *Step, in *Matrix, out *Matrix) {
-	sourceMatrix := in.Get(0, 0)       // 原矩阵名
+	sourceMatrixPath := in.Get(0, 0)   // 原矩阵名
 	sourceCol := in.GetInt(1, 0)       // 原矩阵的列下标
-	lookUpMatrix := in.Get(2, 0)       // 目标矩阵名
+	lookUpMatrixPath := in.Get(2, 0)   // 目标矩阵名
 	lookUpCol := in.GetInt(3, 0)       // 目标矩阵查找列的下标
 	lookUpReturnCol := in.GetInt(4, 0) // 目标矩阵返回列的下标
 
-	sMat := s.GetMatrix(sourceMatrix)
-	lMat := s.GetMatrix(lookUpMatrix)
+	sMat := s.GetMatrix(sourceMatrixPath)
+	lMat := s.GetMatrix(lookUpMatrixPath)
 
 	sColumn := sMat.GetCol(sourceCol)
 	lColumn := lMat.GetCol(lookUpCol)
@@ -152,13 +152,13 @@ func sMatrixVLookUp(s *Step, in *Matrix, out *Matrix) {
 // 注意：表达式不要使用 (( )) 包裹
 // 包裹会按照 step.in 的逻辑统一处理
 func sMatrixApply(s *Step, in *Matrix, out *Matrix) {
-	sourceMatrixName := in.Get(0, 0) // 要操作的矩阵名
+	sourceMatrixPath := in.Get(0, 0) // 要操作的矩阵名
 	rowOrCol := in.Get(1, 0)         // 方向
 	index := in.GetInt(2, 0)         // 下标
 	varName := in.Get(3, 0)          // 元素的变量名
 	expression := in.Get(4, 0)       // 表达式
 
-	s.GetMatrix(sourceMatrixName).CopyTo(out)
+	s.GetMatrix(sourceMatrixPath).CopyTo(out)
 
 	if rowOrCol == "row" {
 		newSlices := make([]string, 0)
@@ -183,14 +183,14 @@ func sMatrixApply(s *Step, in *Matrix, out *Matrix) {
 
 // 按行或按列合并两个矩阵
 func sMatrixMerge(s *Step, in *Matrix, out *Matrix) {
-	matrixName1 := in.Get(0, 0) // 源矩阵1
-	matrixName2 := in.Get(1, 0) // 源矩阵2
+	matrixPath1 := in.Get(0, 0) // 源矩阵1
+	matrixPath2 := in.Get(1, 0) // 源矩阵2
 	rowOrCol := in.Get(2, 0)    // 方向
 
-	mergeMatrix := s.GetMatrix(matrixName2)
+	mergeMatrix := s.GetMatrix(matrixPath2)
 	rows, cols := mergeMatrix.Shape()
 
-	s.GetMatrix(matrixName1).CopyTo(out)
+	s.GetMatrix(matrixPath1).CopyTo(out)
 
 	switch rowOrCol {
 	case "row":

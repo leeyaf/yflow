@@ -1,0 +1,12 @@
+name: mysqlUpdate
+input:
+  - id: int
+  - level: int
+workflows:
+  - workflow:
+    - step: MysqlExecute
+      name: result
+      in:
+        - (( env["mysqlUri"] ))
+        - update hero set level = ((input["level"])) where id = ((input["id"]))
+output: result.out

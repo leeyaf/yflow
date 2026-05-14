@@ -155,8 +155,8 @@ func (s *Step) pathLog() string {
 // yourStepName.in yourStepName.out
 //
 // prev.in prev.out
-func (s *Step) GetMatrix(expression string) *Matrix {
-	stepName, matrixName, err := s.workflow.job.parseMatrixNameExp(expression)
+func (s *Step) GetMatrix(matrixPath string) *Matrix {
+	stepName, matrixName, err := s.workflow.job.parseMatrixPath(matrixPath)
 	if err != nil {
 		panic(err)
 	}
@@ -215,7 +215,7 @@ func (s *Step) GetMatrix(expression string) *Matrix {
 					}
 				}
 			}
-			panic(fmt.Errorf("not found matrix: %v", expression))
+			panic(fmt.Errorf("not found matrix: %v", matrixPath))
 		}()
 	}
 }
@@ -400,6 +400,10 @@ func NewJob(yamlString string, input []string) (*Job, error) {
 		return nil, err
 	}
 
+	if len(input) != len(definition.Input) {
+		return nil, fmt.Errorf("mismatch between provided(%v) and defined(%v) input counts", len(input), len(definition.Input))
+	}
+
 	job := &Job{
 		definition: definition,
 		workflows:  make([]*Workflow, 0, len(definition.Workflows)),
@@ -407,9 +411,9 @@ func NewJob(yamlString string, input []string) (*Job, error) {
 	}
 
 	inputMap := make(map[string]string)
-	for i, row := range definition.Input {
-		for k := range row {
-			inputMap[k] = input[i]
+	for i, inputNameAndDefs := range definition.Input {
+		for inputName := range inputNameAndDefs {
+			inputMap[inputName] = input[i]
 			break
 		}
 	}
@@ -534,10 +538,10 @@ func (j *Job) Execute() (out *Matrix, err error) {
 	}
 }
 
-func (j *Job) parseMatrixNameExp(expression string) (stepName, matrixName string, err error) {
-	parts := strings.Split(expression, ".")
+func (j *Job) parseMatrixPath(matrixPath string) (stepName, matrixName string, err error) {
+	parts := strings.Split(matrixPath, ".")
 	if len(parts) != 2 {
-		return "", "", fmt.Errorf("illegal expression: %v", expression)
+		return "", "", fmt.Errorf("illegal expression: %v", matrixPath)
 	}
 
 	stepName = parts[0]
@@ -548,8 +552,8 @@ func (j *Job) parseMatrixNameExp(expression string) (stepName, matrixName string
 	return stepName, matrixName, nil
 }
 
-func (j *Job) GetMatrix(expression string) (*Matrix, error) {
-	stepName, matrixName, err := j.parseMatrixNameExp(expression)
+func (j *Job) GetMatrix(matrixPath string) (*Matrix, error) {
+	stepName, matrixName, err := j.parseMatrixPath(matrixPath)
 	if err != nil {
 		return nil, err
 	}
@@ -566,31 +570,37 @@ func (j *Job) GetMatrix(expression string) (*Matrix, error) {
 				}
 			}
 		}
-		return nil, fmt.Errorf("not found matrix: %v", expression)
+		return nil, fmt.Errorf("not found matrix: %v", matrixPath)
 	}()
 }
 
 type StepDefinition struct {
-	Step string   `yaml:"step"`
-	Name string   `yaml:"name"`
-	In   []string `yaml:"in"`
+	Step string   `yaml:"step" json:"step"`
+	Name string   `yaml:"name" json:"name,omitempty"`
+	In   []string `yaml:"in" json:"in"`
 }
 
 type WorkflowDefinition struct {
-	Steps []*StepDefinition `yaml:"workflow"`
+	Steps []*StepDefinition `yaml:"workflow" json:"workflow"`
 }
 
 type JobDefinition struct {
-	Name      string                `yaml:"name"`
-	Input     []map[string]string   `yaml:"input"`
-	Workflows []*WorkflowDefinition `yaml:"workflows"`
-	Output    string                `yaml:"output"`
+	Name      string                `yaml:"name" json:"name,omitempty"`
+	Input     []map[string]string   `yaml:"input" json:"input,omitempty"`
+	Workflows []*WorkflowDefinition `yaml:"workflows" json:"workflows"`
+	Output    string                `yaml:"output" json:"output"`
 }
 
 func NewJobDefinition(raw []byte) (*JobDefinition, error) {
-	result := &JobDefinition{}
-	if err := yaml.Unmarshal(raw, result); err != nil {
+	definition := &JobDefinition{}
+	if err := yaml.Unmarshal(raw, definition); err != nil {
 		return nil, err
 	}
-	return result, nil
+	if len(definition.Workflows) < 1 {
+		return nil, errors.New("at least one workflow")
+	}
+	if len(definition.Output) < 1 {
+		return nil, errors.New("no output definition")
+	}
+	return definition, nil
 }

@@ -212,11 +212,23 @@ func (m *Matrix) String() string {
 		if row+1 < rows {
 			breaker = "\n"
 		}
+
+		subRowString := func(subRow int, colFrom, colTo int, breaker string) {
+			for i := colFrom; i < colTo; i++ {
+				b.WriteString(m.columns[i].get(subRow))
+				if i+1 < colTo {
+					b.WriteString(", ")
+				} else {
+					b.WriteString(breaker)
+				}
+			}
+		}
+
 		if cols <= MatrixPrintMaxRowsOrCols {
-			m.subRowString(b, row, 0, cols, breaker)
+			subRowString(row, 0, cols, breaker)
 		} else {
-			m.subRowString(b, row, 0, (MatrixPrintMaxRowsOrCols-1)/2, ", .., ")
-			m.subRowString(b, row, cols-(MatrixPrintMaxRowsOrCols-1)/2, cols, breaker)
+			subRowString(row, 0, (MatrixPrintMaxRowsOrCols-1)/2, ", .., ")
+			subRowString(row, cols-(MatrixPrintMaxRowsOrCols-1)/2, cols, breaker)
 		}
 	}
 
@@ -234,18 +246,6 @@ func (m *Matrix) String() string {
 		}
 	}
 	return b.String()
-}
-
-// (colFrom, colTo]
-func (m *Matrix) subRowString(b *strings.Builder, row int, colFrom, colTo int, breaker string) {
-	for i := colFrom; i < colTo; i++ {
-		b.WriteString(m.columns[i].get(row))
-		if i+1 < colTo {
-			b.WriteString(", ")
-		} else {
-			b.WriteString(breaker)
-		}
-	}
 }
 
 // 转置

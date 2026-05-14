@@ -1,0 +1,53 @@
+name: mysqlParallel
+input:
+  - minLevel: int
+workflows:
+  - workflow:
+    - step: Test
+      in:
+      - (( Sprintf(env["mysqlUriLayout"], "1") ))
+      - (( Sprintf(env["mysqlUriLayout"], "2") ))
+      - (( Sprintf(env["mysqlUriLayout"], "3") ))
+    - step: MysqlExecuteParallel
+      in:
+        - prev.out
+        - select id, player_id, config_id, level, created_time from hero where level > (( input["minLevel"] )) limit 5
+    - step: MatrixSort
+      in:
+      - prev.out
+      - 2
+      - asc
+    - step: MatrixApply
+      name: tableData
+      in:
+        - prev.out
+        - col
+        - 4
+        - value
+        - TimeConvert(value, "" , "2006-01-02 15:04")
+  - workflow:
+    - step: MatrixNew
+      in:
+        - ","
+        - 2, Superman
+        - 4, Spider-Man
+        - 5, Batman
+    - step: MatrixVLookUp
+      in:
+        - tableData.out
+        - 2
+        - prev.out
+        - 0
+        - 1
+    - step: MatrixInsert
+      name: result
+      in:
+        - prev.out
+        - row
+        - 0
+        - Id
+        - PlayerId
+        - ConfigId
+        - Level
+        - UnlockAt
+output: result.out

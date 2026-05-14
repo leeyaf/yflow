@@ -9,6 +9,8 @@ import (
 )
 
 const functionTestYaml = `
+input:
+- hello: string
 workflows:
   - workflow:
     - step: MatrixNew
@@ -33,6 +35,7 @@ workflows:
       - (( Join(Col("prev.out",0),34,39) ))
       - (( Split(Cell("prev.in",4,0),44) ))
       - (( TimeConvert(env["aTime"],"","2006-01-02") ))
+      - (( Sprintf(input["hello"],"Tom") ))
 output: test.out
 `
 
@@ -40,7 +43,9 @@ func TestFunctions(t *testing.T) {
 	yflow.RegistEnv("aInt", "-2")
 	yflow.RegistEnv("aFloat", "-2.3")
 	yflow.RegistEnv("aTime", fmt.Sprintf("%v", time.Now().Local()))
-	job, err := yflow.NewJob(functionTestYaml, []string{})
+	job, err := yflow.NewJob(functionTestYaml, []string{
+		"hello %v",
+	})
 	if err != nil {
 		panic(err)
 	}

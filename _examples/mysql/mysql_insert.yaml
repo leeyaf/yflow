@@ -1,0 +1,13 @@
+name: mysqlInsert
+input:
+  - playerId: int
+  - configId: int
+  - level: int
+workflows:
+  - workflow:
+    - step: MysqlExecute
+      name: result
+      in:
+        - (( env["mysqlUri"] ))
+        - insert into hero(player_id, config_id, level) values ( ((input["playerId"])), ((input["configId"])), ((input["level"])) )
+output: result.out

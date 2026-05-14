@@ -1,0 +1,11 @@
+name: mysqlDelete
+input:
+  - id: int
+workflows:
+  - workflow:
+    - step: MysqlExecute
+      name: result
+      in:
+        - (( env["mysqlUri"] ))
+        - delete from hero where id = ((input["id"]))
+output: result.out
