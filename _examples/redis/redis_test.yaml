@@ -1,0 +1,27 @@
+name: redisTest
+input:
+  - name: string
+workflows:
+  - workflow:
+    - step: RedisExecute
+      in:
+      - (( env["redisUri"] ))
+      - set name ((input["name"]))
+    - step: RedisExecute
+      name: getName
+      in:
+      - (( env["redisUri"] ))
+      - get name
+    - step: RedisExecute
+      in:
+      - (( env["redisUri"] ))
+      - hmset heros id 1 config_id 1001 nick_name "Thomas Edward" gender Male
+    - step: RedisExecute
+      in:
+      - (( env["redisUri"] ))
+      - hgetall heros
+    - step: RedisExecute
+      in:
+      - (( env["redisUri"] ))
+      - eval "return {KEYS[1],'b','c'}" 1 a
+output: getName.out

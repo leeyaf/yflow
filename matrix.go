@@ -502,11 +502,12 @@ func (m *Matrix) GetInt64(row int, col int) int64 {
 }
 
 func (m *Matrix) Set(row int, col int, value string) {
-	rows, cols := m.Shape()
-
-	if row < 0 || col < 0 || row >= rows || col >= cols {
+	if row < 0 || col < 0 {
 		panic("wrong row or col")
 	}
+
+	rows, cols := m.Shape()
+	m.Resize(max(rows, row+1), max(cols, col+1), "")
 
 	m.columns[col].set(row, value)
 }
