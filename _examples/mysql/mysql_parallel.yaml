@@ -5,13 +5,13 @@ workflows:
   - workflow:
     - step: Test
       in:
-      - (( Sprintf(env["mysqlUriLayout"], "1") ))
-      - (( Sprintf(env["mysqlUriLayout"], "2") ))
-      - (( Sprintf(env["mysqlUriLayout"], "3") ))
+      - ${Sprintf(env.mysqlUriLayout, "1")}
+      - ${Sprintf(env.mysqlUriLayout, "2")}
+      - ${Sprintf(env.mysqlUriLayout, "3")}
     - step: MysqlExecuteParallel
       in:
         - prev.out
-        - select id, player_id, config_id, level, created_time from hero where level > (( input["minLevel"] )) limit 5
+        - select id, player_id, config_id, level, created_time from hero where level > ${input.minLevel} limit 5
     - step: MatrixSort
       in:
       - prev.out
@@ -28,10 +28,9 @@ workflows:
   - workflow:
     - step: MatrixNew
       in:
-        - ","
-        - 2, Superman
-        - 4, Spider-Man
-        - 5, Batman
+        - 2 Superman
+        - 4 "Spider Man"
+        - 5 Batman
     - step: MatrixVLookUp
       in:
         - tableData.out
@@ -45,9 +44,5 @@ workflows:
         - prev.out
         - row
         - 0
-        - Id
-        - PlayerId
-        - ConfigId
-        - Level
-        - UnlockAt
+        - Id PlayerId ConfigId Level UnlockAt
 output: result.out

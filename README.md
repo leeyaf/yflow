@@ -7,11 +7,11 @@ A declarative workflow engine based on YAML configuration, allowing you to defin
 ## Features
 
 * 🚀 **Declarative Configuration**: Define data processing workflows using YAML.
-* 🔌 **Multiple Data Sources**: Easily connect to various data sources with just one Step.
-* 📊 **Data Transformation**: Provides matrix operation functions (Transpose, VLookUp, Apply, etc.).
-* ⚡ **Dynamic Expressions**: Based on [bilibili/gengine](https://github.com/bilibili/gengine), can be used within ``step.in``.
-* 🔄 **Multi-Workflow Support**: Executes multiple workflows in parallel by default.
-* 🧩 **Excellent Extensibility**: Both Steps and Functions can be extended, making it easy to customize your own processing logic.
+* 🔌 **Multiple Data Sources**: Connect to various data sources easily with just one ``Step``.
+* 📊 **Data Transformation**: Provides rich matrix operation functions.
+* ⚡ **Function Expressions**: Built-in [bilibili/gengine](https://github.com/bilibili/gengine) rule engine.
+* 🔄 **Multi-Workflow Support**: Execute multiple workflows in parallel.
+* 🧩 **Excellent Extensibility**: Easily extend ``Step`` and ``Function``.
 
 ## Quick Start
 
@@ -31,44 +31,49 @@ go get github.com/leeyaf/yflow
 
 ```` yaml
 name: myflow
-input: # Original input
-  - age: int # Type definition is not related to the engine; it can be used by the frontend (web interface)
+input: # Raw input
+  - age: int # Type definitions are engine-agnostic and can be used by the frontend (web client)
   - phone: phoneNumber
 workflows:
   - workflow: # First workflow
     - step: Test # Name of a registered Step
       name: result # Step name (optional)
-      in: # Input for this Step
-        - a
-        - b
+      in: # Input matrix
+        - a # First row
+        - b # Second row
   - workflow: # Second workflow (executed in parallel)
     - step: Test
-output: result.out # Points to a Step's output
+output: result.out # Points to the Step's matrix
 ````
 
-Predefined Steps are available in [registed_step.go](./registed_step.go), and examples are in [registed_step_test.go](./registed_step_test.go).
+### Function Expressions
 
-More Step implementations:
+In the YAML configuration, the ``in`` parameter for all ``Step``s can use ``${YourExpression}``.
 
-* [MySQL](./_examples/mysql/main.go)
+| Expression | Description |
+| ----- | --- |
+| ${prev.in} | Input matrix address of the previous ``Step`` |
+| ${prev.out} | Output matrix address of the previous ``Step`` |
+| ${yourStepName.in} | Input matrix address of the specified ``Step`` |
+| ${input.age} | Get value from ``input`` |
+| ${env.mysqlUri} | Get value from ``env`` |
+| ${ParseInt("6")} | Call a ``Function`` |
+| ${10*3} | Simple mathematical operation. Refer to [bilibili/gengine语法](https://github.com/bilibili/gengine/wiki/语法) |
 
-### Expression Syntax
+* Directly available ``Step``s are in [registed_step.go](./registed_step.go). See example [registed_step_test.go](./registed_step_test.go).
+* More ``Step`` implementations:
+  * [MySQL](./_examples/mysql/step_mysql.go)
+  * [Redis](./_examples/redis/step_redis.go)
+* Directly available ``Function``s are in [registed_function.go](./registed_function.go). See example [registed_function_test.go](./registed_function_test.go).
 
-Expressions can be used in all ``step.in`` fields.
+### Other Notes
 
-* Access input: ``(( input["paramName"] ))``
-* Access env: ``(( env["paramName"] ))``
-* Access the previous Step: ``(( Cell("prev.out", 0, 0) ))``
-* Nested usage: ``(( ParseInt(input["paramName"]) ))`` (The **final** return result of the expression will be formatted as a ``string``).
-* Simple operations: ``(( ParseInt(input["paramName"])*10 ))``
-
-Refer to [bilibili/gengine](https://github.com/bilibili/gengine/wiki/语法) for expression details.
-
-Predefined Functions are available in [registed_function.go](./registed_function.go), and examples are in [registed_function_test.go](./registed_function_test.go).
+* Because elements in the ``Matrix`` are of type ``string``, the output of function expressions will be converted to ``string``.
+* When writing YAML, if a string actually represents multiple values, separate them with spaces (``shell-style``).
 
 ## Development Guide
 
-### Adding a Step
+### Adding a ``Step``
 
 ```` go
 func sMyStep(s *yflow.Step, in *yflow.Matrix, out *yflow.Matrix) {
@@ -78,7 +83,7 @@ func sMyStep(s *yflow.Step, in *yflow.Matrix, out *yflow.Matrix) {
 yflow.RegistStep("MyStep", sMyStep)
 ````
 
-### Adding a Function
+### Adding a ``Function``
 
 ```` go
 // For functions that do NOT need access to the current Step
@@ -107,15 +112,15 @@ yflow.RegistFunctionWithStep("MyFunction2", fMyFunction2)
 
 Previously, when I served as the lead server programmer at a gaming company, after the game launched, operations and planning teams continuously requested data and reports from the server. Among these requests, some were one-time, while others were recurring. My initial strategy was simple: evaluate the nature of the request (short-term vs. long-term). Long-term needs were implemented in code, and one-time requests were handled with SQL + Excel. However, the problem was: many supposedly one-time requests would suddenly reappear one day. Recalling the lengthy steps I had previously implemented, I wondered: Could there be a low-cost way to formalize these lengthy procedures?
 
-Thus, I conceived and developed the original version (internal company code ``fakegm``). With ``fakegm``, we met various demands at a very low cost and no longer needed to evaluate their long-term or short-term nature (treating all as long-term). As it evolved, our server-side business code was eventually reduced to just login, timers, and other essentials; everything else became implementations of various Steps. The codebase shrank, but functionality became richer. We integrated numerous data sources: MySQL, Redis, Kubernetes, AliyunOSS, AliyunImage, GrafanaCloud, internal configuration management platforms, and internal game servers. On the frontend (web interface), aside from the basic Job management and execution page, we also created dedicated, polished pages for some particularly high-frequency needs. Of course, the basic Job management page could already fulfill all requirements, but the customized pages struck the perfect balance for various stakeholders.
+Thus, I conceived and developed the original version (internal company code ``fakegm``). With ``fakegm``, we met various demands at a very low cost and no longer needed to evaluate their long-term or short-term nature (treating all as long-term). As it evolved, our server-side business code was eventually reduced to just login, timers, and other essentials; everything else became implementations of various ``Step``s. The codebase shrank, but functionality became richer. We integrated numerous data sources: MySQL, Redis, Kubernetes, AliyunOSS, AliyunImage, GrafanaCloud, internal configuration management platforms, and internal game servers. On the frontend (web interface), aside from the basic ``Job`` management and execution page, we also created dedicated, polished pages for some particularly high-frequency needs. Of course, the basic ``Job`` management page could already fulfill all requirements, but the customized pages struck the perfect balance for various stakeholders.
 
-After accomplishing all this, we even began to look forward to various requests whose nature (long-term or short-term) was unclear: when existing Steps could meet the need, writing a YAML file would deliver the result; when existing Steps fell short, it was an opportunity to add a new one to our Step library!
+After accomplishing all this, we even began to look forward to various requests whose nature (long-term or short-term) was unclear: when existing ``Step``s could meet the need, writing a YAML file would deliver the result; when existing ``Step``s fell short, it was an opportunity to add a new one to our ``Step`` library!
 
 Now, ``yflow`` inherits the purest essence of ``fakegm``, completely recoded and redesigned to make Clean Work even cleaner.
 
 ## Contribution
 
-Steps and Functions that are generally useful, fundamental, and not biased towards specific projects are registered by default. Those with a specific bias should be placed in ``/_examples/``.
+``Step``s and ``Function``s that are generally useful, fundamental, and not biased towards specific projects are registered by default. Those with a specific bias should be placed in ``/_examples/``.
 
 Issues and Pull Requests are welcome!
 

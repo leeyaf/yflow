@@ -7,6 +7,16 @@ import (
 	"github.com/leeyaf/yflow"
 )
 
+func TestMatrixString(t *testing.T) {
+	m := yflow.NewMatrix()
+	m.SetRow(0, []string{"Nick Name", "1"})
+	m.SetRow(1, []string{"6", "eval \"return\""})
+	fmt.Println(m)
+
+	m.Resize(20, 20, "0")
+	fmt.Println(m)
+}
+
 func TestMatrixResize(t *testing.T) {
 	m := yflow.NewMatrix()
 

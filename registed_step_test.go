@@ -13,24 +13,22 @@ workflows:
     - step: Test
       name: test
       in:
-      - hello (( env["engineName"] ))
+      - hello ${env.engineName}
     - step: MatrixNew
       name: bestOne
       in:
-      - ","
-      - a,b,c,d,e,f
-      - g,h,i,j,k,l
-      - m,n,o,p,q,r
-      - 10,2,73,94,5,670
-      - -1,-2,-3,-4,-5,-6
+      - a b c d e f
+      - g h i j k l
+      - m n o p q r
+      - 10 2 73 94 5 670
+      - -1 -2 -3 -4 -5 -6
     - step: MatrixNew
       name: renameBestOne
       in:
-      - ","
-      - a, A
-      - b, B
-      - c, C
-      - d, D
+      - a A
+      - b B
+      - c C
+      - d D
     - step: MatrixEmpty
       in:
       - 3
@@ -50,12 +48,7 @@ workflows:
       - bestOne.out
       - col
       - 1
-      - i0
-      - i1
-      - i2
-      - i3
-      - i4
-      - i5
+      - i0 i1 i2 i3 i4 i5
     - step: MatrixSelect
       in:
       - bestOne.out

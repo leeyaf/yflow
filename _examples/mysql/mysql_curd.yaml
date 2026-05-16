@@ -1,0 +1,36 @@
+name: mysqlCURD
+input:
+  - playerId: int
+  - configId: int
+  - level: int
+workflows:
+  - workflow:
+    # Create
+    - step: MysqlExecute
+      name: result
+      in:
+      - ${env.mysqlUri}
+      - insert into hero(player_id, config_id, level) values ( ${input.playerId}, ${input.configId}, ${input.level} )
+    - step: MysqlExecute
+      in:
+      - ${env.mysqlUri}
+      - select id, player_id, config_id, level from hero where player_id = ${input.playerId}
+    # Update
+    - step: MysqlExecute
+      in:
+      - ${env.mysqlUri}
+      - update hero set level=0 where player_id = ${input.playerId}
+    - step: MysqlExecute
+      in:
+      - ${env.mysqlUri}
+      - select id, player_id, config_id, level from hero where player_id = ${input.playerId}
+    # Delete
+    - step: MysqlExecute
+      in:
+      - ${env.mysqlUri}
+      - delete from hero where player_id = ${input.playerId} and config_id = ${input.configId}
+    - step: MysqlExecute
+      in:
+      - ${env.mysqlUri}
+      - select id, player_id, config_id, level from hero where player_id = ${input.playerId}
+output: result.out

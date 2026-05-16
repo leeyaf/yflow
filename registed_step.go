@@ -2,7 +2,8 @@ package yflow
 
 import (
 	"strconv"
-	"strings"
+
+	"github.com/google/shlex"
 )
 
 func init() {
@@ -26,18 +27,15 @@ func sTest(s *Step, in *Matrix, out *Matrix) {
 	in.CopyTo(out)
 }
 
-// 从 YAML 定义创建矩阵
+// 从 YAML 创建矩阵
 func sMatrixNew(s *Step, in *Matrix, out *Matrix) {
-	sep := in.Get(0, 0)      // 行内元素的字符串分隔符
-	rows := in.GetCol(0)[1:] // 多行数据
-
-	for _, row := range rows {
-		cells := strings.Split(row, sep)
-		trimedCells := make([]string, 0, len(cells))
-		for _, c := range cells {
-			trimedCells = append(trimedCells, strings.TrimSpace(c))
+	rows, _ := in.Shape()
+	for i := range rows {
+		tokens, err := shlex.Split(in.Get(i, 0))
+		if err != nil {
+			panic(err)
 		}
-		out.AppendRow(trimedCells)
+		out.AppendRow(tokens)
 	}
 }
 
@@ -73,14 +71,19 @@ func sMatrixInsert(s *Step, in *Matrix, out *Matrix) {
 	matrixPath := in.Get(0, 0) // 要操作的矩阵名
 	rowOrCol := in.Get(1, 0)   // 方向
 	index := in.GetInt(2, 0)   // 下标
-	values := in.GetCol(0)[3:] // 数据
+	values := in.Get(3, 0)     // 数据
+
+	tokens, err := shlex.Split(values)
+	if err != nil {
+		panic(err)
+	}
 
 	s.GetMatrix(matrixPath).CopyTo(out)
 
 	if rowOrCol == "row" {
-		out.InsertRow(index, values)
+		out.InsertRow(index, tokens)
 	} else if rowOrCol == "col" {
-		out.InsertCol(index, values)
+		out.InsertCol(index, tokens)
 	} else {
 		panic("wrong row or col")
 	}
@@ -90,19 +93,24 @@ func sMatrixInsert(s *Step, in *Matrix, out *Matrix) {
 func sMatrixSelect(s *Step, in *Matrix, out *Matrix) {
 	matrixPath := in.Get(0, 0) // 原矩阵名
 	rowOrCol := in.Get(1, 0)   // 方向
-	indexs := in.GetCol(0)[2:] // 下标数组
+	indexs := in.Get(2, 0)     // 下标数组
+
+	tokens, err := shlex.Split(indexs)
+	if err != nil {
+		panic(err)
+	}
 
 	sourceMatrix := s.GetMatrix(matrixPath)
-	for _, index := range indexs {
-		i, err := strconv.ParseInt(index, 10, 64)
+	for _, token := range tokens {
+		index, err := strconv.ParseInt(token, 10, 64)
 		if err != nil {
 			panic(err)
 		}
 		if rowOrCol == "row" {
-			rowData := sourceMatrix.GetRow(int(i))
+			rowData := sourceMatrix.GetRow(int(index))
 			out.AppendRow(rowData)
 		} else if rowOrCol == "col" {
-			colData := sourceMatrix.GetCol(int(i))
+			colData := sourceMatrix.GetCol(int(index))
 			out.AppendCol(colData)
 		} else {
 			panic("wrong name, row or col")

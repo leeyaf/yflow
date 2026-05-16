@@ -7,7 +7,7 @@ replace github.com/leeyaf/yflow => ../../
 require (
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
-	github.com/leeyaf/yflow v0.0.0
+	github.com/leeyaf/yflow v0.0.0-00010101000000-000000000000
 )
 
 require (

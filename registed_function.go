@@ -10,13 +10,16 @@ import (
 func init() {
 	RegistFunctionWithStep("Cell", fCell)
 	RegistFunctionWithStep("Row", fRow)
+	RegistFunctionWithStep("Rows", fRows)
 	RegistFunctionWithStep("Col", fCol)
+	RegistFunctionWithStep("Cols", fCols)
 	RegistFunction("ParseInt", fParseInt)
 	RegistFunction("ParseFloat", fParseFloat)
 	RegistFunction("Join", fJoin)
 	RegistFunction("Split", fSplit)
 	RegistFunction("TimeConvert", fTimeConvert)
 	RegistFunction("Sprintf", fSprintf)
+	RegistFunction("Arange", fArange)
 }
 
 // 从矩阵中读取值
@@ -33,10 +36,26 @@ func fRow(step *Step) any {
 	}
 }
 
+// 获取矩阵的行数
+func fRows(step *Step) any {
+	return func(matrixPath string) int {
+		rows, _ := step.GetMatrix(matrixPath).Shape()
+		return rows
+	}
+}
+
 // 从矩阵中读取一列
 func fCol(step *Step) any {
 	return func(matrixPath string, col int) []string {
 		return step.GetMatrix(matrixPath).GetCol(col)
+	}
+}
+
+// 获取矩阵的列数
+func fCols(step *Step) any {
+	return func(matrixPath string) int {
+		_, cols := step.GetMatrix(matrixPath).Shape()
+		return cols
 	}
 }
 
@@ -64,44 +83,20 @@ func fParseFloat(val string) float64 {
 //
 // wrap 用来包裹元素
 //
-// 注意：这里使用 rune 类型，默认值 0
-//
-// 常用符号与 ASCII 十进制的对应关系如下：
-//
-// “ 34
-//
-// ' 39
-//
-// , 44
-//
-// - 45
-//
-// . 46
-//
-// : 58
-//
-// ; 59
-//
-// ` 96
-func fJoin(datas []string, asciiSep rune, asciiWrap rune) string {
-	sep := string(asciiSep)
-	if asciiWrap == 0 {
-		return strings.Join(datas, sep)
-	} else {
-		wrap := string(asciiWrap)
-		wrapedDatas := make([]string, 0, len(datas))
-		for _, data := range datas {
-			wrapedDatas = append(wrapedDatas, wrap+data+wrap)
-		}
-		return strings.Join(wrapedDatas, sep)
+// 注意：无法在 YAML 中使用 " 作为 sep 或 wrap
+func fJoin(datas []string, sep string, wrap string) string {
+	wrapedDatas := make([]string, 0, len(datas))
+	for _, data := range datas {
+		wrapedDatas = append(wrapedDatas, wrap+data+wrap)
 	}
+	return strings.Join(wrapedDatas, sep)
 }
 
 // 分隔字符串
 //
-// sep 分隔符 rune 类型
-func fSplit(s string, sep rune) []string {
-	return strings.Split(s, string(sep))
+// sep 分隔符
+func fSplit(s string, sep string) []string {
+	return strings.Split(s, sep)
 }
 
 // 转换时间字符串的格式
@@ -123,4 +118,24 @@ func fTimeConvert(s string, oldLayout string, newLayout string) string {
 // fmt.Sprintf()
 func fSprintf(s string, a ...any) string {
 	return fmt.Sprintf(s, a...)
+}
+
+// 生成从 start 到 stop（不含）的 int 切片，步长 step
+//
+// 类似 NumPy 的 arange
+func fArange(start, stop, step int) []string {
+	if step == 0 {
+		panic("step cannot be zero")
+	}
+
+	length := 0
+	if (step > 0 && start < stop) || (step < 0 && start > stop) {
+		length = max(0, (stop-start+step-1)/step)
+	}
+
+	result := make([]string, 0, length)
+	for i := range length {
+		result = append(result, strconv.Itoa(start+i*step))
+	}
+	return result
 }

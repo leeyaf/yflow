@@ -230,11 +230,23 @@ func (s *Step) execute(ctx context.Context) {
 		}
 
 		noExp := row
-		re := regexp.MustCompile(`\(\((.*?)\)\)`)
-		matches := re.FindAllStringSubmatch(row, -1)
-		for _, match := range matches {
-			result := s.GengineExecute(match[1])
-			noExp = strings.Replace(noExp, match[0], result, 1)
+		{
+			// input 和 env
+			re := regexp.MustCompile(`(input|env)\.([a-zA-Z_][a-zA-Z0-9_]*)`)
+			matches := re.FindAllStringSubmatch(noExp, -1)
+			for _, match := range matches {
+				matrixPath := fmt.Sprintf(`%v["%v"]`, match[1], match[2])
+				noExp = strings.Replace(noExp, match[0], matrixPath, 1)
+			}
+		}
+		{
+			// gengine
+			re := regexp.MustCompile(`\$\{(.*?)\}`)
+			matches := re.FindAllStringSubmatch(noExp, -1)
+			for _, match := range matches {
+				result := s.GengineExecute(match[1])
+				noExp = strings.Replace(noExp, match[0], result, 1)
+			}
 		}
 		noExps = append(noExps, noExp)
 	}
