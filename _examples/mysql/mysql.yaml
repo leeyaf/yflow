@@ -7,8 +7,8 @@ workflows:
   - workflow:
     - step: MysqlExecute
       in:
-        - (( env["mysqlUri"] ))
-        - select id, player_id, config_id, level, created_time from hero where level > (( input["minLevel"] )) and config_id in (( "("+input["configIds"]+")" )) order by id desc limit (( (ParseInt(input["page"])-1)*5 )), 5
+        - ${env.mysqlUri}
+        - select id, player_id, config_id, level, created_time from hero where level > ${input.minLevel} and config_id in (${input.configIds}) order by id desc limit ${(ParseInt(input.page)-1)*5}, 5
     - step: MatrixApply
       name: tableData
       in:
@@ -20,10 +20,9 @@ workflows:
   - workflow:
     - step: MatrixNew
       in:
-        - ","
-        - 2, Superman
-        - 4, Spider-Man
-        - 5, Batman
+        - 2 Superman
+        - 4 "Spider Man"
+        - 5 Batman
     - step: MatrixVLookUp
       in:
         - tableData.out
@@ -37,9 +36,5 @@ workflows:
         - prev.out
         - row
         - 0
-        - Id
-        - PlayerId
-        - ConfigId
-        - Level
-        - UnlockAt
+        - Id PlayerId ConfigId Level UnlockAt
 output: result.out

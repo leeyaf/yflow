@@ -208,27 +208,31 @@ func (m *Matrix) String() string {
 	b.WriteString(fmt.Sprintf("Matrix(%v, %v)\n", rows, cols))
 
 	rowString := func(row int) {
-		breaker := ""
-		if row+1 < rows {
-			breaker = "\n"
-		}
-
 		subRowString := func(subRow int, colFrom, colTo int, breaker string) {
+			b.WriteString(breaker)
 			for i := colFrom; i < colTo; i++ {
-				b.WriteString(m.columns[i].get(subRow))
-				if i+1 < colTo {
-					b.WriteString(", ")
+				if i > 0 {
+					b.WriteString(" ")
+				}
+				data := m.Get(subRow, i)
+				if strings.Contains(data, " ") {
+					b.WriteString(strconv.Quote(data))
 				} else {
-					b.WriteString(breaker)
+					b.WriteString(data)
 				}
 			}
+		}
+
+		breaker := "\n"
+		if row < 1 {
+			breaker = ""
 		}
 
 		if cols <= MatrixPrintMaxRowsOrCols {
 			subRowString(row, 0, cols, breaker)
 		} else {
-			subRowString(row, 0, (MatrixPrintMaxRowsOrCols-1)/2, ", .., ")
-			subRowString(row, cols-(MatrixPrintMaxRowsOrCols-1)/2, cols, breaker)
+			subRowString(row, 0, (MatrixPrintMaxRowsOrCols-1)/2, breaker)
+			subRowString(row, cols-(MatrixPrintMaxRowsOrCols-1)/2, cols, " ..")
 		}
 	}
 
@@ -240,7 +244,7 @@ func (m *Matrix) String() string {
 		for row := range (MatrixPrintMaxRowsOrCols - 1) / 2 {
 			rowString(row)
 		}
-		b.WriteString("..\n")
+		b.WriteString("\n..")
 		for row := rows - (MatrixPrintMaxRowsOrCols-1)/2; row < rows; row++ {
 			rowString(row)
 		}

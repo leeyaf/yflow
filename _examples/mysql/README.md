@@ -55,8 +55,8 @@ workflows:
   - workflow:
     - step: MysqlExecute
       in:
-        - (( env["mysqlUri"] ))
-        - select id, player_id, config_id, level, created_time from hero where level > (( input["minLevel"] )) and config_id in (( "("+input["configIds"]+")" )) order by id desc limit (( (ParseInt(input["page"])-1)*5 )), 5
+        - ${env.mysqlUri}
+        - select id, player_id, config_id, level, created_time from hero where level > ${input.minLevel} and config_id in (${input.configIds}) order by id desc limit ${(ParseInt(input.page)-1)*5}, 5
     - step: MatrixApply
       name: tableData
       in:
@@ -68,10 +68,9 @@ workflows:
   - workflow:
     - step: MatrixNew
       in:
-        - ","
-        - 2, Superman
-        - 4, Spider-Man
-        - 5, Batman
+        - 2 Superman
+        - 4 "Spider Man"
+        - 5 Batman
     - step: MatrixVLookUp
       in:
         - tableData.out
@@ -85,11 +84,7 @@ workflows:
         - prev.out
         - row
         - 0
-        - Id
-        - PlayerId
-        - ConfigId
-        - Level
-        - UnlockAt
+        - Id PlayerId ConfigId Level UnlockAt
 output: result.out
 ````
 
@@ -98,6 +93,8 @@ output: result.out
 [step_mysql.go](./step_mysql.go)
 
 ```` go
+package main
+
 import (
 	"fmt"
 	"log/slog"
@@ -111,7 +108,7 @@ func init() {
 	yflow.RegistStep("MysqlExecute", sMysqlExecute)
 }
 
-// 执行 MySQL 查询
+// 执行 SQL
 //
 // 可以保证列的顺序与查询顺序一致，默认丢弃列名
 //
@@ -122,6 +119,10 @@ func sMysqlExecute(s *yflow.Step, in *yflow.Matrix, out *yflow.Matrix) {
 
 	slog.Info("MysqlExecute", "sql", sql)
 
+	executeSql(uri, sql, out)
+}
+
+func executeSql(uri string, sql string, out *yflow.Matrix) {
 	db, err := gorm.Open(mysql.Open(uri))
 	if err != nil {
 		panic(err)
@@ -139,7 +140,6 @@ func sMysqlExecute(s *yflow.Step, in *yflow.Matrix, out *yflow.Matrix) {
 	}
 
 	var columnNames []string
-
 	for rows.Next() {
 		if columnNames == nil {
 			if names, err := rows.Columns(); err != nil {
@@ -171,38 +171,39 @@ func sMysqlExecute(s *yflow.Step, in *yflow.Matrix, out *yflow.Matrix) {
 package main
 
 import (
-    "fmt"
-    "os"
+	"fmt"
+	"log/slog"
+	"os"
 
-    "github.com/leeyaf/yflow"
+	"github.com/leeyaf/yflow"
 )
 
 func main() {
-    yamlData, err := os.ReadFile("myflow.yaml")
-    if err != nil {
-        panic(err)
-    }
-
-    // 注册全局环境变量
-    yflow.RegistEnv("mysqlUri", "root:123456@tcp(127.0.0.1:3306)/yflow?charset=utf8mb4&parseTime=True&timeout=30s&loc=Local")
-
-    // yaml 中定义的 input, 可以用表达式获取值
-    input := []string{
-        "1",              // minLevel
-        "1001,1002,1005", // configIds
-        "2",              // page
-    }
-
-    // 创建工作流
-    job, err := yflow.NewJob(string(yamlData), input)
-    if err != nil {
-      panic(err)
-    }
-
-    // 执行工作流
-    matrixResult, err := job.Execute()
+	yamlData, err := os.ReadFile("mysql.yaml")
 	if err != nil {
 		panic(err)
+	}
+
+	// 注册全局环境变量
+	yflow.RegistEnv("mysqlUri", "root:123456@tcp(127.0.0.1:3306)/yflow?charset=utf8mb4&parseTime=True&timeout=30s&loc=Local")
+
+	// yaml 中定义的 input, 可以用表达式获取值
+	input := []string{
+		"1",     // minLevel
+		"2,3,4", // configIds
+		"2",     // page
+	}
+
+	// 创建工作流
+	job, err := yflow.NewJob(string(yamlData), input)
+	if err != nil {
+		panic(err)
+	}
+
+	// 执行工作流
+	matrixResult, err := job.Execute()
+	if err != nil {
+		slog.Error(err.Error())
 	}
 
 	fmt.Println(matrixResult)
@@ -222,12 +223,12 @@ go run .
 ```` log
 INFO MysqlExecute sql="select id, player_id, config_id, level, created_time from hero where level > 1 and config_id in (2,3,4) order by id desc limit 5, 5"
 Matrix(6, 5)
-Id, PlayerId, ConfigId, Level, UnlockAt
-9, 5, Superman, 7, 2026-01-23 10:15
-8, 4, 3, 15, 2026-01-22 17:30
-6, 3, Spider-Man, 6, 2026-01-20 13:20
-5, 3, Superman, 12, 2026-01-19 11:30
-4, 2, 3, 8, 2026-01-18 16:45
+Id PlayerId ConfigId Level UnlockAt
+9 5 Superman 7 "2026-01-23 10:15"
+8 4 3 15 "2026-01-22 17:30"
+6 3 "Spider Man" 6 "2026-01-20 13:20"
+5 3 Superman 12 "2026-01-19 11:30"
+4 2 3 8 "2026-01-18 16:45"
 Job execution: mysql
 Workflow0: MysqlExecute [PASS] -> MatrixApply(tableData) [PASS]
 Workflow1: MatrixNew [PASS] -> MatrixVLookUp [PASS] -> MatrixInsert(result) [PASS]

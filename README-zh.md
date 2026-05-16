@@ -5,11 +5,11 @@
 ## 特性
 
 * 🚀 **声明式配置**：使用 YAML 定义数据处理工作流
-* 🔌 **多数据源**：只要一个 Step，就可以轻松接入各种数据源
-* 📊 **数据转换**：提供矩阵操作函数（Transpose、VLookUp、Apply 等）
-* ⚡ **动态表达式**：基于 [bilibili/gengine](https://github.com/bilibili/gengine) 实现，可以在 ``step.in`` 中使用
-* 🔄 **多工作流支持**：默认并行执行多个工作流
-* 🧩 **良好扩展性**：Step、Function 都可以扩展，轻松定制自己的处理逻辑
+* 🔌 **多数据源**：只要一个 ``Step``，就可以轻松接入各种数据源
+* 📊 **数据转换**：提供丰富的矩阵操作函数
+* ⚡ **函数表达式**：内置 [bilibili/gengine](https://github.com/bilibili/gengine) 规则引擎
+* 🔄 **多工作流支持**：并行执行多个工作流
+* 🧩 **良好扩展性**：轻松扩展 ``Step`` 和 ``Function``
 
 ## 快速开始
 
@@ -36,37 +36,43 @@ workflows:
   - workflow: # 第一个工作流
     - step: Test # 已注册的 Step 名
       name: result # 步骤名称（可选）
-      in: # 这个 Step 的输入
-        - a
-        - b
+      in: # 输入矩阵
+        - a # 第一行
+        - b # 第二行
   - workflow: # 第二个工作流（并行执行）
     - step: Test
-output: result.out # 指向 Step
+output: result.out # 指向 Step 的矩阵
 ````
 
-直接可用的 Step 在 [registed_step.go](./registed_step.go)，使用示例 [registed_step_test.go](./registed_step_test.go)
+### 函数表达式
 
-更多的 Step 实现：
+在 YAML 里所有 ``Step`` 的 ``in`` 都可以使用 ``${YourExpression}``
 
-* [MySQL](./_examples/mysql/main.go)
+| 表达式 | 说明 |
+| ----- | --- |
+| ${prev.in} | 上个 ``Step`` 的输入矩阵地址 |
+| ${prev.out} | 上个 ``Step`` 的输出矩阵地址 |
+| ${yourStepName.in} | 指定 ``Step`` 的输入矩阵地址 |
+| ${input.age} | 获取 ``input`` 中的值 |
+| ${env.mysqlUri} | 获取 ``env`` 中的值 |
+| ${ParseInt("6")} | 调用 ``Function`` |
+| ${10*3} | 简单数学元算，参考 [bilibili/gengine语法](https://github.com/bilibili/gengine/wiki/语法) |
 
-### 表达式语法
 
-可以在所有 ``step.in`` 中使用表达式
+* 直接可用的 ``Step`` 在 [registed_step.go](./registed_step.go)，示例 [registed_step_test.go](./registed_step_test.go)
+* 更多 ``Step`` 实现
+  * [MySQL](./_examples/mysql/step_mysql.go)
+  * [Redis](./_examples/redis/step_redis.go)
+* 直接可用的 ``Function`` 在 [registed_function.go](./registed_function.go)，示例 [registed_function_test.go](./registed_function_test.go)
 
-* 访问 input: ``(( input["paramName"] ))``
-* 访问 env: ``(( env["paramName"] ))``
-* 访问上一个 Step: ``(( Cell("prev.out", 0, 0) ))``
-* 嵌套使用: ``(( ParseInt(input["paramName"]) ))``（表达式**最终的**返回结果会被格式化为 ``string``）
-* 简单运算: ``(( ParseInt(input["paramName"])*10 ))``
+### 其他
 
-参考 [bilibili/gengine语法](https://github.com/bilibili/gengine/wiki/语法)
-
-直接可用的 Function 在 [registed_function.go](./registed_function.go)，使用示例 [registed_function_test.go](./registed_function_test.go)
+* 因为 ``Matrix`` 中的元素是 ``string`` 型的，所以函数表达式的输出会被转为 ``string``
+* 在编写 YAML 时，如果一个字符串实际代表多个值，应使用空格分隔 ``shell-style``
 
 ## 开发指南
 
-### 添加 Step
+### 添加 ``Step``
 
 ```` go
 func sMyStep(s *yflow.Step, in *yflow.Matrix, out *yflow.Matrix) {
@@ -76,7 +82,7 @@ func sMyStep(s *yflow.Step, in *yflow.Matrix, out *yflow.Matrix) {
 yflow.RegistStep("MyStep", sMyStep)
 ````
 
-### 添加 Function
+### 添加 ``Function``
 
 ```` go
 // 不需要访问当前 Step 的
@@ -105,15 +111,15 @@ yflow.RegistFunctionWithStep("MyFunction2", fMyFunction2)
 
 之前我在一家游戏公司做服务器主程时，游戏上线后，运营、策划陆续开始向服务器索要数据、报表。在这些需求里，有部分是一次性的，有部分是长期的，我当时的策略很简单：评估需求的长短期属性，长期的 Code 落地，一次性的 SQL + Excel 处理。但问题是：有很多一次性的需求，突然在某一天又冒了出来，回想曾经实现的冗长步骤，我就在想：能不能找一种低成本的方式把冗长步骤落地呢？
 
-于是，我构思并开发出了原始版本（公司内部代码 ``fakegm``）。借助 ``fakegm``，我们用很低的成本满足了各种需求，也不需要再评估长短期属性（全部视为长期）。发展到后期，我们服务端的业务代码就只剩下了登陆、定时器和其他必要的，其余的全是各种 Step 的实现。代码减少了，功能却更丰富了，我们打通了非常多的数据源：MySQL、Redis、Kubernetes、AliyunOSS、AliyunImage、GrafanaCloud、内部配置表管理平台、内部游戏服。而前端（网页端），除了基础的 Job 管理执行页面外，我们针对一些特别高频的需求，还定制了专用的漂亮页面，当然基础的 Job 管理执行页面已经可以实现所有的需求了，但定制的漂亮页面在各方的需求中找到了完美的平衡点。
+于是，我构思并开发出了原始版本（公司内部代码 ``fakegm``）。借助 ``fakegm``，我们用很低的成本满足了各种需求，也不需要再评估长短期属性（全部视为长期）。发展到后期，我们服务端的业务代码就只剩下了登陆、定时器和其他必要的，其余的全是各种 ``Step`` 的实现。代码减少了，功能却更丰富了，我们打通了非常多的数据源：MySQL、Redis、Kubernetes、AliyunOSS、AliyunImage、GrafanaCloud、内部配置表管理平台、内部游戏服。而前端（网页端），除了基础的 ``Job`` 管理执行页面外，我们针对一些特别高频的需求，还定制了专用的漂亮页面，当然基础的 ``Job`` 管理执行页面已经可以实现所有的需求了，但定制的漂亮页面在各方的需求中找到了完美的平衡点。
 
-当这一切做好后，我们甚至开始期待各种看不到长短期属性的需求：当已有的 Step 可以满足时，写一个 YAML 就可以交付了；当已有的 Step 无法满足时，又可以给我们的 Step 库加个新的了！
+当这一切做好后，我们甚至开始期待各种看不到长短期属性的需求：当已有的 ``Step`` 可以满足时，写一个 YAML 就可以交付了；当已有的 ``Step`` 无法满足时，又可以给我们的 ``Step`` 库加个新的了！
 
 现在，``yflow`` 继承了 ``fakegm`` 最纯粹的思想，重新编码、重新设计，让 Clen Work 更 Clean。
 
 ## 贡献
 
-通用性较好的、基础的、无具体项目偏向的 Step 和 Function 默认注册，有偏向的请放在 ``/_examples/`` 里。
+通用性较好的、基础的、无具体项目偏向的 ``Step`` 和 ``Function`` 默认注册，有偏向的请放在 ``/_examples/`` 里。
 
 欢迎提交 Issue 和 Pull Request！
 
