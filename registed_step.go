@@ -1,7 +1,11 @@
 package yflow
 
 import (
+	"bytes"
+	"io"
+	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/google/shlex"
 )
@@ -18,6 +22,8 @@ func init() {
 	RegistStep("MatrixVLookUp", sMatrixVLookUp)
 	RegistStep("MatrixApply", sMatrixApply)
 	RegistStep("MatrixMerge", sMatrixMerge)
+
+	RegistStep("Http", sHttp)
 }
 
 // 输出等于输入
@@ -212,4 +218,44 @@ func sMatrixMerge(s *Step, in *Matrix, out *Matrix) {
 	default:
 		panic("wrong row or col")
 	}
+}
+
+func sHttp(s *Step, in *Matrix, out *Matrix) {
+	method := in.Get(0, 0) // 留空代表 GET，可选：OPTIONS GET HEAD POST PUT DELETE TRACE CONNECT
+	uri := in.Get(1, 0)    // 地址
+	header := in.Get(2, 0) // 使用=连接键值 空格分隔多组 Header
+	body := in.Get(3, 0)   // 字符串
+
+	req, err := http.NewRequest(method, uri, bytes.NewBufferString(body))
+	if err != nil {
+		panic(err)
+	}
+
+	// 处理 header
+	if len(header) > 0 {
+		tokens, err := shlex.Split(header)
+		if err != nil {
+			panic(err)
+		}
+		for _, token := range tokens {
+			parts := strings.Split(token, "=")
+			req.Header.Set(parts[0], parts[1])
+		}
+	}
+
+	cli := &http.Client{
+		Timeout: StepMaxLifetime,
+	}
+	rsp, err := cli.Do(req)
+	if err != nil {
+		panic(err)
+	}
+
+	rspData, err := io.ReadAll(rsp.Body)
+	if err != nil {
+		panic(err)
+	}
+
+	out.Set(0, 0, strconv.Itoa(rsp.StatusCode))
+	out.Set(1, 0, string(rspData))
 }

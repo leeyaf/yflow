@@ -74,6 +74,13 @@ workflows:
       - bestOne.out
       - renameBestOne.out
       - col
+  - workflow:
+    - step: Http
+      in:
+      - GET
+      - https://go.dev
+      - Name=go "Action=Get Test"
+      - '{"Name":"go","Action":"Get Test"}'
 output: test.out
 `
 
@@ -88,5 +95,6 @@ func TestSteps(t *testing.T) {
 		panic(err)
 	}
 	fmt.Println(result)
+	fmt.Println(job.ExecutionLog())
 	fmt.Println(job.MemoryModelLog())
 }
